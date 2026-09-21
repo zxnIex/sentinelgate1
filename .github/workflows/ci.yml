@@ -1,0 +1,53 @@
+name: verify
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e ".[dev]" -r requirements-dev.txt
+      - run: python -m ruff check src tests
+      - run: python -m pytest --cov=sentinelgate --cov-fail-under=80
+      - run: python -m sentinelgate.redteam
+      - run: python -m sentinelgate.evaluation
+      - run: python -m sentinelgate.benchmark_suite --iterations 500 --output evidence/benchmark.json
+      - run: python -m bandit -q -r src
+      - run: python -m pip_audit -r requirements.txt
+
+  postgres-integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: sentinelgate_test
+          POSTGRES_USER: sentinelgate
+          POSTGRES_PASSWORD: sentinelgate-test-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sentinelgate -d sentinelgate_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      SENTINEL_POSTGRES_TEST_URL: postgresql://sentinelgate:sentinelgate-test-password@127.0.0.1:5432/sentinelgate_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e ".[dev]"
+      - run: python -m pytest tests/integration

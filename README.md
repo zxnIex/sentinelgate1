@@ -1,10 +1,32 @@
 # SentinelGate
 
+> v0.10 is a developer-preview/design-partner release, not an independently validated
+> enterprise-production claim.
+
 SentinelGate is an identity-aware, fail-closed security gateway for custom tools used by autonomous AI agents. It mediates an action before application code executes it and returns one of three outcomes: `allow`, `deny`, or `require_approval`.
 
-Version 0.7 is a tested design-partner MVP—not a claim of production certification. Its narrow promise is:
+Version 0.10 is a tested design-partner release—not a claim of production certification. Its narrow promise is:
 
 > Prevent unauthorized agent tool execution and unsafe information flow while preserving reviewable evidence for every decision.
+
+## What v0.10 adds
+
+- Guided browser onboarding: validate the deployment, issue one scoped agent token and run both a
+  safe and hostile call through the gateway.
+- A rebuilt responsive control plane with an animated live decision gate, benchmark evidence and
+  database/worker/queue health.
+- Optional browser SSO using the OIDC authorization-code flow with PKCE. Operator authorization
+  still uses the customer's existing roles; SentinelGate does not maintain local enterprise users.
+- Durable approval notifications through a PostgreSQL/SQLite outbox worker with retries,
+  deduplication, leases, dead-letter state and observable heartbeats.
+- PostgreSQL concurrency tests in CI, authenticated Prometheus latency/counter metrics, and bounded
+  backup/verification/restore-drill tooling.
+- Authenticated reviewer attribution: the server derives the reviewer from the verified operator
+  identity instead of trusting a reviewer string supplied by the browser.
+
+The release still does **not** provide independent validation, a completed penetration test,
+customer deployment evidence, direct cloud-KMS cryptography, full MCP Streamable HTTP/SSE/OAuth,
+or broad connector coverage. Those remain explicit gates rather than hidden marketing claims.
 
 ## Enforcement path
 
@@ -52,6 +74,11 @@ OpenAI's Responses API returns custom function calls to application code. Sentin
 - Monotonic trace-level taint that cannot be cleared by omitting a token
 - `public`, `internal`, `confidential` and `restricted` classifications
 - Per-sink maximum classification and blocked-taint policies
+- Signed JSON-pointer field provenance bound to exact leaf-value digests
+- Field-specific sink policy for trust, classification and labels
+- Verified copy, concatenation, template and substring propagation
+- Conservative all-input union for arbitrary LLM transformations
+- Explicit, allowlisted and audited label declassification
 
 ### Real knowledge connector
 
@@ -148,6 +175,16 @@ Injection matching is a signal, not the security boundary. Identity, provenance,
 - Automatic `tools/list` discovery and refresh before each remote `tools/call`
 - Policy-bound server identity so clients cannot self-assert a trusted MCP source
 - Fail-closed refusal of blocked, changed, stale or uninspected tool definitions
+- Bounded response bodies, JSON content-type enforcement and JSON-RPC ID matching
+- Bounded `tools/list` cursor pagination
+
+### Federated administrator identity
+
+- Development-only shared-token mode for local evaluation
+- OIDC issuer, audience, signature, expiry and role verification for deployments
+- Existing Entra, Okta, Auth0 and other standards-compliant providers can supply identity
+- Production configuration refuses shared-token-only administrator authentication
+- Viewer, analyst, approver and administrator role tiers are mapped from provider claims
 
 ### Operational approvals
 
@@ -210,10 +247,53 @@ uvicorn sentinelgate.api:app --reload
 - Product website: <http://127.0.0.1:8000/>
 - Operator console: <http://127.0.0.1:8000/console>
 - Health check: <http://127.0.0.1:8000/health>
+- Readiness check: <http://127.0.0.1:8000/ready>
+
+Open `/console/onboarding` after signing in. It performs the shortest complete evaluation path:
+environment checks, scoped identity issuance, an allowed knowledge read and a denied unknown-tool
+attempt. The issued agent token is retained only in the current browser tab.
+
+If `SENTINEL_APPROVAL_WEBHOOK_URL` is configured, start the durable delivery worker in a second
+terminal:
+
+```bash
+python -m sentinelgate.worker
+```
+
+With Compose, use `docker compose --profile notifications up --build`. Approval creation commits
+the notification job to the same database transaction boundary; the worker delivers it with a
+lease, bounded retries and dead-letter state. The System health page exposes the queue and worker
+heartbeat.
+
+Run the complete reproducible evidence suite:
+
+```bash
+python -m sentinelgate.benchmark_suite --iterations 2000 --output evidence/benchmark.json
+```
+
+The ten-case deterministic suite is reported as regression conformance, not efficacy. v0.10 also
+ships 100 adversarial probes and a live HTTP concurrency harness. See
+[`docs/BENCHMARKING.md`](docs/BENCHMARKING.md). Integration guidance is in
+[`docs/INTEGRATION.md`](docs/INTEGRATION.md), with database deployment in
+[`docs/POSTGRESQL.md`](docs/POSTGRESQL.md).
+
+The report includes local policy-path latency, corpus exact-match/detection/false-positive
+rates, and deterministic connector-failure/concurrency checks. The bundled corpus is
+project-authored and must not be presented as independent validation.
+
+For public deployment, run `sentinelgate.marketing:app` as the internet-facing website and
+keep `sentinelgate.api:app` private behind HTTPS and OIDC-aware access controls. `compose.yaml`
+demonstrates this split: port 8080 is the public site and the control plane binds only to
+localhost port 8000.
 
 Paste the raw `SENTINEL_ADMIN_TOKEN` value into the operator console. Do not prefix it with
 `Bearer`; the browser adds that authentication scheme itself. Restart Uvicorn after editing
 `.env` so the process reloads the values.
+
+For a company deployment, configure the OIDC issuer/audience/JWKS values plus the optional browser
+authorization and token endpoints, client ID and client secret. The console then presents a
+**Continue with company SSO** button and uses authorization code + PKCE. MFA and account lifecycle
+remain with Entra, Okta, Auth0, Google Workspace or another standards-compliant provider.
 
 Swagger's **Authorize** dialog exposes separate `AdminBearer` and `AgentBearer` entries.
 Paste raw token values into them; Swagger adds the `Bearer` prefix. Use the admin token to
@@ -467,14 +547,21 @@ python -m bandit -q -r src
 python -m pip_audit -r requirements.txt
 ```
 
-The benchmark is deliberately labelled as a local policy-path microbenchmark; it excludes HTTP
-and connector latency and must not be presented as an end-to-end production result.
+The local suite and the live HTTP harness are reported separately. The live harness defaults to
+`/v1/execute`, so its allowed knowledge-read scenario includes connector execution; blocked and
+approval-required calls stop before connector execution. Neither result is an SLA.
 
-Release verification on Python 3.12: 61 tests passed with 87% line coverage, all 11 adversarial
-cases passed, Ruff and Bandit passed, and `pip-audit` reported no known vulnerabilities. On the
-release host, the 2,000-iteration local policy-path benchmark measured 0.290 ms p50, 0.690 ms p95
-and 2.818 ms p99 (2,438.6 evaluations/second). These are development-host measurements, not an
-SLA or a connector benchmark; reproduce them on the intended deployment hardware.
+Release-host verification on Python 3.12: **88 tests passed, 2 PostgreSQL-only tests skipped, 81%
+line coverage**, 11/11 red-team regressions passed, 4/4 resilience cases passed, Ruff and Bandit
+passed, and `pip-audit` found no known vulnerabilities in the locked requirements. The
+2,000-iteration local SQLite policy path measured **0.359 ms p50, 0.587 ms p95 and 0.721 ms p99**
+at about **2,532.7 evaluations/second**.
+
+The 200-request HTTP `/v1/execute` smoke run had zero HTTP errors. At concurrency 1 it measured
+6.423 ms p50 / 83.106 ms p99; at concurrency 100 it measured 677.379 ms p50 / 890.196 ms p99.
+That high-concurrency result is intentionally retained: it was a single Uvicorn process using
+SQLite and is evidence of development-stack contention, **not** a PostgreSQL capacity claim. See
+the JSON under `evidence/` and reproduce on the intended deployment.
 
 ## Docker
 
@@ -482,11 +569,10 @@ SLA or a connector benchmark; reproduce them on the intended deployment hardware
 docker compose up --build
 ```
 
-For a local evaluation this starts with explicit development defaults even when `.env` is absent.
-Create `.env` and replace every example secret before retaining data or allowing another machine
-to reach the service. The image runs as a non-root user, drops Linux capabilities in Compose and
-stores its SQLite database in a named volume. Docker was not available in the build environment,
-so the container definition was statically reviewed but not executed there.
+Create `.env`, set `POSTGRES_PASSWORD` and replace every example secret before retaining data or
+allowing another machine to reach the service. Compose starts PostgreSQL, a private gateway and a
+separate public marketing process. The optional `notifications` profile starts the durable worker.
+The images run as a non-root user, drop Linux capabilities and use a named PostgreSQL volume.
 
 ## Main endpoints
 
@@ -516,18 +602,24 @@ so the container definition was statically reviewed but not executed there.
 | `GET /v1/containments` | Admin | List active or historical containment |
 | `POST /v1/containments/{id}/release` | Admin | Release reversible containment |
 | `GET /v1/audit` | Admin | Audit events |
-| `GET /metrics` | Admin | Prometheus-format counters |
+| `GET /v1/setup/status` | Admin | Readiness-guided onboarding checks |
+| `GET /v1/system/status` | Admin | Database, worker, queue and runtime state |
+| `GET /v1/benchmarks` | Admin | Versioned local evidence and claim boundary |
+| `GET /metrics` | Admin | Prometheus counters and request histograms |
 
 ## What must change before production
 
-- Replace local HMAC workload tokens with enterprise OIDC/JWKS or SPIFFE identities.
-- Replace SQLite with PostgreSQL and use tenant-scoped database controls.
-- Move secrets and encryption keys into a managed KMS/secrets manager.
+- Federate workload identities with customer cloud identity or SPIFFE where local signed agent
+  tokens are not sufficient.
+- Validate PostgreSQL failover and recovery on the actual managed database product.
+- Replace file-mounted key material with direct cloud-KMS envelope encryption and exercise rotation.
 - Make the audit chain externally anchored or export to append-only storage.
 - Isolate network connectors into separately permissioned workers.
-- Add distributed rate limiting and quarantine state.
+- Validate distributed rate limiting and containment under multi-region failure modes.
 - Add policy signing, change review and staged rollout.
 - Add broader DLP classifiers with measured false-positive/negative rates.
+- Complete MCP Streamable HTTP/SSE/OAuth interoperability and add customer-requested connectors.
+- Obtain independent corpus review, penetration testing and real customer deployment evidence.
 - Obtain independent penetration testing and a secure development process.
 - Validate the product with real design partners before expanding the feature surface.
 

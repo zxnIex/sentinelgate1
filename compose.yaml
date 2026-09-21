@@ -1,13 +1,66 @@
 services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: sentinelgate
+      POSTGRES_USER: sentinelgate
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - sentinelgate-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentinelgate -d sentinelgate"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  marketing:
+    build: .
+    command: ["uvicorn", "sentinelgate.marketing:app", "--host", "0.0.0.0", "--port", "8080"]
+    ports:
+      - "8080:8080"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
   gateway:
     build: .
     env_file:
       - path: .env
         required: false
+    environment:
+      SENTINEL_DATABASE_URL: postgresql://sentinelgate:${POSTGRES_PASSWORD}@postgres:5432/sentinelgate
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "127.0.0.1:8000:8000"
-    volumes:
-      - sentinelgate-data:/app/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  worker:
+    build: .
+    command: ["python", "-m", "sentinelgate.worker"]
+    profiles: ["notifications"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      SENTINEL_DATABASE_URL: postgresql://sentinelgate:${POSTGRES_PASSWORD}@postgres:5432/sentinelgate
+    depends_on:
+      postgres:
+        condition: service_healthy
     read_only: true
     tmpfs:
       - /tmp
@@ -18,4 +71,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  sentinelgate-data:
+  sentinelgate-postgres:

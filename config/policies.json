@@ -35,6 +35,15 @@
       "max_input_classification": "internal",
       "classification_violation_action": "deny",
       "blocked_taint_labels": ["prompt_injection", "secret", "customer-data", "restricted"],
+      "field_policies": {
+        "/body": {
+          "requires_provenance": true,
+          "blocked_labels": ["prompt_injection", "secret", "customer-data", "restricted"],
+          "max_classification": "internal",
+          "deny_untrusted": true,
+          "action": "deny"
+        }
+      },
       "max_egress_bytes": 50000,
       "hourly_egress_bytes": 250000,
       "dlp_action": "deny",

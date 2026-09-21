@@ -1,12 +1,15 @@
+import hmac
 from datetime import datetime, timedelta
 
 from sentinelgate.executor import ToolExecutionError, ToolRegistry, ToolValidationError
+from sentinelgate.field_taint import FieldTaintError, resolve_pointer, value_digest
 from sentinelgate.identity import TokenError
 from sentinelgate.models import (
     AgentPrincipal,
     Decision,
     EnforcementMode,
     ExecutionResult,
+    FieldTaint,
     LineageRecord,
     PolicyDecision,
     PolicyReplayDecision,
@@ -35,6 +38,8 @@ class GatewayService:
         executor: ToolRegistry,
         enforcement_mode: EnforcementMode = EnforcementMode.ENFORCE,
         approval_notifier: ApprovalNotifier | None = None,
+        durable_notifications: bool = False,
+        notification_max_attempts: int = 8,
     ):
         self.policy = policy
         self.store = store
@@ -42,6 +47,8 @@ class GatewayService:
         self.executor = executor
         self.enforcement_mode = enforcement_mode
         self.approval_notifier = approval_notifier
+        self.durable_notifications = durable_notifications
+        self.notification_max_attempts = notification_max_attempts
 
     def available_tools(self, principal: AgentPrincipal) -> list[dict]:
         available = []
@@ -119,6 +126,7 @@ class GatewayService:
 
         try:
             contexts = self._provenance_contexts(call, principal)
+            field_contexts = self._field_provenance_contexts(call, principal)
         except TokenError:
             result = Evaluation(
                 Decision.DENY, ["INVALID_PROVENANCE"], "critical", self.policy.version
@@ -127,7 +135,9 @@ class GatewayService:
                 call, principal, digest, result, findings, None, False, side_effects
             )
 
-        result = self.policy.evaluate(call, principal, contexts, findings)
+        result = self.policy.evaluate(
+            call, principal, contexts, findings, field_contexts
+        )
         result = self._apply_mcp_integrity(call, result)
         if result.decision is not Decision.DENY:
             try:
@@ -163,7 +173,26 @@ class GatewayService:
             ttl = int(self.policy.defaults.get("approval_ttl_seconds", 900))
             approval = self.store.create_approval(call, digest, principal, ttl)
             approval_id = approval.id
-            if self.approval_notifier and self.approval_notifier.enabled:
+            if self.durable_notifications:
+                job_id = self.store.enqueue_outbox(
+                    "approval.required",
+                    approval.id,
+                    {
+                        "approval_id": approval.id,
+                        "reason_codes": result.reasons,
+                    },
+                    self.notification_max_attempts,
+                )
+                self.store.append_audit(
+                    "approval_notification_queued",
+                    {
+                        "approval_id": approval.id,
+                        "job_id": job_id,
+                        "agent_id": principal.agent_id,
+                        "tenant_id": principal.tenant_id,
+                    },
+                )
+            elif self.approval_notifier and self.approval_notifier.enabled:
                 delivered = self.approval_notifier.notify(approval, result.reasons)
                 self.store.append_audit(
                     "approval_notification_delivered"
@@ -179,6 +208,7 @@ class GatewayService:
         if side_effects:
             snapshot_call = call.model_dump(mode="json")
             snapshot_call["provenance_tokens"] = []
+            snapshot_call["field_provenance"] = {}
             self.store.record_policy_snapshot(
                 {
                     "tenant_id": principal.tenant_id,
@@ -186,6 +216,10 @@ class GatewayService:
                     "scopes": sorted(principal.scopes),
                     "call": snapshot_call,
                     "provenance": [item.model_dump(mode="json") for item in contexts],
+                    "field_provenance": {
+                        pointer: [item.model_dump(mode="json") for item in items]
+                        for pointer, items in field_contexts.items()
+                    },
                     "findings": [item.model_dump(mode="json") for item in findings],
                     "original_decision": result.decision.value,
                     "created_at": utc_now().isoformat(),
@@ -274,7 +308,18 @@ class GatewayService:
                 request_id=approval.request.request_id,
                 status="provenance_expired_or_invalid",
             )
-        current = self.policy.evaluate(approval.request, principal, contexts, findings)
+        try:
+            field_contexts = self._field_provenance_contexts(
+                approval.request, principal
+            )
+        except TokenError:
+            return ExecutionResult(
+                request_id=approval.request.request_id,
+                status="provenance_expired_or_invalid",
+            )
+        current = self.policy.evaluate(
+            approval.request, principal, contexts, findings, field_contexts
+        )
         current = self._apply_mcp_integrity(approval.request, current)
         if current.decision is Decision.DENY:
             self.store.append_audit(
@@ -329,7 +374,13 @@ class GatewayService:
             findings = [
                 SecurityFinding.model_validate(item) for item in snapshot["findings"]
             ]
-            outcome = engine.evaluate(call, principal, provenance, findings)
+            field_provenance = {
+                pointer: [FieldTaint.model_validate(item) for item in items]
+                for pointer, items in snapshot.get("field_provenance", {}).items()
+            }
+            outcome = engine.evaluate(
+                call, principal, provenance, findings, field_provenance
+            )
             original = Decision(snapshot["original_decision"])
             counts[outcome.decision] += 1
             replayed.append(
@@ -425,7 +476,7 @@ class GatewayService:
                         "output": redact(result.output),
                     },
                 )
-            parents = self._provenance_contexts(call, principal)
+            parents = self._all_provenance_contexts(call, principal)
             attestation = self.provenance.derive_tool_output(
                 tenant_id=principal.tenant_id,
                 trace_id=call.trace_id,
@@ -455,6 +506,7 @@ class GatewayService:
                     labels=attestation.labels,
                     content_digest=attestation.content_digest,
                     created_at=utc_now(),
+                    field_taint=attestation.field_taint,
                 )
             )
             return ExecutionResult(
@@ -466,6 +518,7 @@ class GatewayService:
                 classification=attestation.classification,
                 taint_labels=attestation.labels,
                 trace_id=call.trace_id,
+                field_taint=attestation.field_taint,
             )
         except (ToolExecutionError, ToolValidationError) as exc:
             self.store.finish_execution(call.request_id, "failed")
@@ -524,6 +577,57 @@ class GatewayService:
                     ),
                 )
             )
+        return contexts
+
+    def _field_provenance_contexts(
+        self, call: ToolCallRequest, principal: AgentPrincipal
+    ) -> dict[str, list[FieldTaint]]:
+        if len(call.field_provenance) > 200:
+            raise TokenError("Too many field provenance bindings")
+        verified_cache: dict[str, VerifiedProvenance] = {}
+        result: dict[str, list[FieldTaint]] = {}
+        try:
+            for destination, references in call.field_provenance.items():
+                if len(references) > 20:
+                    raise TokenError("Too many provenance sources for field")
+                destination_value = resolve_pointer(call.arguments, destination)
+                for reference in references:
+                    verified = verified_cache.get(reference.token)
+                    if verified is None:
+                        verified = self.provenance.verify_many(
+                            [reference.token], principal.tenant_id
+                        )[0]
+                        verified_cache[reference.token] = verified
+                    if verified.trace_id and verified.trace_id != call.trace_id:
+                        raise TokenError("Field provenance trace mismatch")
+                    field = verified.field_taint.get(reference.source_pointer)
+                    if field is None:
+                        raise TokenError("Signed source field does not exist")
+                    if not hmac.compare_digest(
+                        field.content_digest, value_digest(destination_value)
+                    ):
+                        raise TokenError("Field provenance value mismatch")
+                    result.setdefault(destination, []).append(field)
+        except (FieldTaintError, IndexError) as exc:
+            raise TokenError("Invalid field provenance binding") from exc
+        return result
+
+    def _all_provenance_contexts(
+        self, call: ToolCallRequest, principal: AgentPrincipal
+    ) -> list[VerifiedProvenance]:
+        contexts = self._provenance_contexts(call, principal)
+        field_tokens = {
+            reference.token
+            for references in call.field_provenance.values()
+            for reference in references
+        }
+        existing = {item.content_digest for item in contexts}
+        for item in self.provenance.verify_many(
+            sorted(field_tokens), principal.tenant_id
+        ):
+            if item.content_digest not in existing:
+                contexts.append(item)
+                existing.add(item.content_digest)
         return contexts
 
     def _apply_mcp_integrity(

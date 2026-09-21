@@ -44,6 +44,29 @@ class SentinelGateClient:
             {"source_id": source_id, "content": content, "trust": trust},
         )
 
+    def attest_structured(
+        self,
+        source_id: str,
+        value: Any,
+        *,
+        trust: str = "untrusted",
+        classification: str = "public",
+        labels: list[str] | None = None,
+        trace_id: str | None = None,
+        field_overrides: dict[str, dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "source_id": source_id,
+            "value": value,
+            "trust": trust,
+            "classification": classification,
+            "labels": labels or [],
+            "field_overrides": field_overrides or {},
+        }
+        if trace_id:
+            payload["trace_id"] = trace_id
+        return self._post("/v1/provenance/attest-structured", payload)
+
     def evaluate(
         self,
         *,
@@ -51,13 +74,21 @@ class SentinelGateClient:
         tool_name: str,
         arguments: dict[str, Any],
         provenance_tokens: list[str] | None = None,
+        field_provenance: dict[str, list[dict[str, str]]] | None = None,
         purpose: str = "",
         trace_id: str | None = None,
         request_id: str | None = None,
     ) -> dict[str, Any]:
         return self._tool_call(
-            "/v1/evaluate", user_id, tool_name, arguments, provenance_tokens,
-            purpose, trace_id, request_id,
+            "/v1/evaluate",
+            user_id,
+            tool_name,
+            arguments,
+            provenance_tokens,
+            field_provenance,
+            purpose,
+            trace_id,
+            request_id,
         )
 
     def execute(
@@ -67,13 +98,21 @@ class SentinelGateClient:
         tool_name: str,
         arguments: dict[str, Any],
         provenance_tokens: list[str] | None = None,
+        field_provenance: dict[str, list[dict[str, str]]] | None = None,
         purpose: str = "",
         trace_id: str | None = None,
         request_id: str | None = None,
     ) -> dict[str, Any]:
         return self._tool_call(
-            "/v1/execute", user_id, tool_name, arguments, provenance_tokens,
-            purpose, trace_id, request_id,
+            "/v1/execute",
+            user_id,
+            tool_name,
+            arguments,
+            provenance_tokens,
+            field_provenance,
+            purpose,
+            trace_id,
+            request_id,
         )
 
     def _tool_call(
@@ -83,6 +122,7 @@ class SentinelGateClient:
         tool_name: str,
         arguments: dict[str, Any],
         provenance_tokens: list[str] | None,
+        field_provenance: dict[str, list[dict[str, str]]] | None,
         purpose: str,
         trace_id: str | None,
         request_id: str | None,
@@ -92,6 +132,7 @@ class SentinelGateClient:
             "tool_name": tool_name,
             "arguments": arguments,
             "provenance_tokens": provenance_tokens or [],
+            "field_provenance": field_provenance or {},
             "purpose": purpose,
         }
         if trace_id:

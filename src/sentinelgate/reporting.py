@@ -50,7 +50,7 @@ def security_evidence_report(store: Store, settings: Settings, limit: int = 500)
         "report": "SentinelGate security evidence",
         "schema_version": "1.0",
         "generated_at": utc_now().isoformat(),
-        "product_version": "0.7.0",
+        "product_version": "0.10.0",
         "enforcement_mode": settings.enforcement_mode.value,
         "scope": {"audit_events_considered": len(events), "maximum_events": limit},
         "integrity": {"audit_chain_valid": store.verify_audit_chain()},

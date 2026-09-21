@@ -71,7 +71,7 @@ def test_mcp_definition_blocks_instructions_and_collisions(store):
 
 def test_security_report_is_evidence_not_certification(store):
     report = security_evidence_report(store, Settings(), 50)
-    assert report["product_version"] == "0.7.0"
+    assert report["product_version"] == "0.10.0"
     assert report["integrity"]["audit_chain_valid"] is True
     assert "not a SOC 2" in report["disclaimer"]
     assert report["control_evidence"]
@@ -86,7 +86,7 @@ def test_public_site_and_multi_page_console(service, store):
         client = TestClient(app)
         landing = client.get("/")
         assert landing.status_code == 200
-        assert "Control what agents can do" in landing.text
+        assert "Every agent action" in landing.text
         assert "admin token" not in landing.text.lower()
         assert "frame-ancestors 'none'" in landing.headers["content-security-policy"]
 
@@ -98,7 +98,7 @@ def test_public_site_and_multi_page_console(service, store):
         ]:
             response = client.get(route)
             assert response.status_code == 200
-            assert f'const section="{label}"' in response.text
+            assert f'data-section="{label}"' in response.text
 
         headers = {"Authorization": "Bearer test-admin"}
         policy = client.get("/v1/policy", headers=headers)
@@ -106,7 +106,7 @@ def test_public_site_and_multi_page_console(service, store):
         assert policy.json()["version"] == "test-2"
         report = client.get("/v1/reports/security", headers=headers)
         assert report.status_code == 200
-        assert report.json()["product_version"] == "0.7.0"
+        assert report.json()["product_version"] == "0.10.0"
         audit_export = client.get("/v1/reports/audit.csv", headers=headers)
         assert audit_export.status_code == 200
         assert audit_export.headers["content-type"].startswith("text/csv")

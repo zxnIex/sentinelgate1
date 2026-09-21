@@ -1,4 +1,4 @@
-﻿.env
+.env
 .env.*
 !.env.example
 .venv/
@@ -12,6 +12,9 @@ __pycache__/
 .coverage
 htmlcov/
 data/
+backups/
+*.dump
+*.dump.manifest.json
 *.db
 *.db-journal
 *.db-shm

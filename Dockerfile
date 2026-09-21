@@ -6,6 +6,7 @@ COPY src ./src
 RUN pip install --no-cache-dir -r requirements.txt && pip install --no-cache-dir --no-deps .
 COPY config ./config
 COPY knowledge ./knowledge
+COPY evidence ./evidence
 RUN useradd --create-home --uid 10001 sentinel && mkdir -p /app/data && chown -R sentinel:sentinel /app
 USER sentinel
 EXPOSE 8000

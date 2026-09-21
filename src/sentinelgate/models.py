@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 TaintLabel = Annotated[
     str, Field(pattern=r"^[a-zA-Z0-9_.:-]{1,64}$", max_length=64)
 ]
+JsonPointer = Annotated[str, Field(pattern=r"^(?:/(?:[^~/]|~[01])*)*$", max_length=1024)]
 TraceId = Annotated[
     str, Field(pattern=r"^[a-zA-Z0-9_.:-]{1,128}$", max_length=128)
 ]
@@ -84,6 +85,62 @@ class ProvenanceAttestation(BaseModel):
     lineage_id: str
     trace_id: TraceId | None = None
     expires_at: datetime
+    field_taint: dict[JsonPointer, "FieldTaint"] = Field(default_factory=dict)
+
+
+class FieldTaint(BaseModel):
+    content_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    trust: TrustLevel
+    classification: DataClassification = DataClassification.PUBLIC
+    labels: list[TaintLabel] = Field(default_factory=list, max_length=50)
+    lineage_ids: list[str] = Field(default_factory=list, max_length=100)
+
+
+class FieldProvenanceReference(BaseModel):
+    token: str = Field(min_length=20, max_length=16_384)
+    source_pointer: JsonPointer
+
+
+class StructuredProvenanceAttestRequest(BaseModel):
+    source_id: str = Field(min_length=1, max_length=256)
+    value: Any
+    trust: TrustLevel = TrustLevel.UNTRUSTED
+    classification: DataClassification = DataClassification.PUBLIC
+    labels: list[TaintLabel] = Field(default_factory=list, max_length=50)
+    trace_id: TraceId | None = None
+    field_overrides: dict[JsonPointer, dict[str, Any]] = Field(default_factory=dict)
+
+
+class DerivationInput(BaseModel):
+    value: Any
+    reference: FieldProvenanceReference
+
+
+class FieldDerivation(BaseModel):
+    operation: str = Field(pattern=r"^(copy|concat|template|substring)$")
+    inputs: list[str] = Field(min_length=1, max_length=50)
+    separator: str = Field(default="", max_length=100)
+    template: str = Field(default="", max_length=10_000)
+    start: int | None = None
+    end: int | None = None
+
+
+class StructuredProvenanceDeriveRequest(BaseModel):
+    source_id: str = Field(min_length=1, max_length=256)
+    value: Any
+    inputs: dict[str, DerivationInput] = Field(min_length=1, max_length=100)
+    derivations: dict[JsonPointer, FieldDerivation] = Field(default_factory=dict)
+    mode: str = Field(pattern=r"^(deterministic|llm)$")
+    trace_id: TraceId
+
+
+class DeclassificationRequest(BaseModel):
+    tenant_id: str = Field(pattern=r"^[a-zA-Z0-9_.:-]{1,128}$")
+    token: str = Field(min_length=20, max_length=16_384)
+    paths: list[JsonPointer] = Field(min_length=1, max_length=100)
+    remove_labels: list[TaintLabel] = Field(min_length=1, max_length=20)
+    reviewer: str = Field(default="", max_length=128, description="Deprecated")
+    reason: str = Field(min_length=10, max_length=1000)
 
 
 class VerifiedProvenance(BaseModel):
@@ -96,6 +153,7 @@ class VerifiedProvenance(BaseModel):
     lineage_id: str | None = None
     trace_id: TraceId | None = None
     parent_ids: list[str] = Field(default_factory=list)
+    field_taint: dict[JsonPointer, FieldTaint] = Field(default_factory=dict)
 
 
 class ToolCallRequest(BaseModel):
@@ -104,6 +162,9 @@ class ToolCallRequest(BaseModel):
     tool_name: str = Field(pattern=r"^[a-zA-Z][a-zA-Z0-9_.:-]{0,127}$")
     arguments: dict[str, Any] = Field(default_factory=dict)
     provenance_tokens: list[str] = Field(default_factory=list, max_length=50)
+    field_provenance: dict[JsonPointer, list[FieldProvenanceReference]] = Field(
+        default_factory=dict
+    )
     purpose: str = Field(default="", max_length=1000)
     trace_id: TraceId = Field(default_factory=lambda: str(uuid4()))
     mcp_server_id: str | None = Field(
@@ -136,7 +197,11 @@ class PolicyDecision(BaseModel):
 
 
 class ApprovalAction(BaseModel):
-    reviewer: str = Field(min_length=1, max_length=128)
+    reviewer: str = Field(
+        default="",
+        max_length=128,
+        description="Deprecated: reviewer identity is derived from the authenticated operator.",
+    )
     note: str = Field(default="", max_length=1000)
 
 
@@ -165,6 +230,7 @@ class ExecutionResult(BaseModel):
     classification: DataClassification | None = None
     taint_labels: list[str] = Field(default_factory=list)
     trace_id: TraceId | None = None
+    field_taint: dict[JsonPointer, FieldTaint] = Field(default_factory=dict)
 
 
 class SimulationRequest(BaseModel):
@@ -214,7 +280,7 @@ class Incident(BaseModel):
 
 class IncidentAction(BaseModel):
     status: str = Field(pattern="^(open|investigating|contained|resolved)$")
-    reviewer: str = Field(min_length=1, max_length=128)
+    reviewer: str = Field(default="", max_length=128, description="Deprecated")
     note: str = Field(default="", max_length=1000)
 
 
@@ -238,7 +304,7 @@ class ContainmentMode(StrEnum):
 
 class ContainmentRequest(BaseModel):
     mode: ContainmentMode
-    reviewer: str = Field(min_length=1, max_length=128)
+    reviewer: str = Field(default="", max_length=128, description="Deprecated")
     reason: str = Field(min_length=1, max_length=1000)
     duration_seconds: int = Field(default=900, ge=60, le=86400)
     allowed_tools: list[str] = Field(default_factory=list, max_length=50)
@@ -284,6 +350,7 @@ class LineageRecord(BaseModel):
     labels: list[TaintLabel] = Field(default_factory=list)
     content_digest: str
     created_at: datetime
+    field_taint: dict[JsonPointer, FieldTaint] = Field(default_factory=dict)
 
 
 class TraceSummary(BaseModel):
@@ -298,7 +365,7 @@ class TraceSummary(BaseModel):
 
 
 class ReleaseAgentRequest(BaseModel):
-    reviewer: str = Field(min_length=1, max_length=128)
+    reviewer: str = Field(default="", max_length=128, description="Deprecated")
     note: str = Field(default="", max_length=1000)
 
 
