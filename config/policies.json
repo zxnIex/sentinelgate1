@@ -1,0 +1,150 @@
+{
+  "version": "2026-09-21.7",
+  "defaults": {
+    "unknown_tool": "deny",
+    "untrusted_to_sensitive": "deny",
+    "max_string_length": 10000,
+    "requests_per_minute": 60,
+    "approval_ttl_seconds": 900,
+    "quarantine_threshold": 5,
+    "quarantine_window_seconds": 300,
+    "max_egress_bytes": 100000,
+    "hourly_egress_bytes": 1000000,
+    "cross_trace_taint_window_seconds": 900,
+    "mcp_observation_ttl_seconds": 3600
+  },
+  "tools": {
+    "search_knowledge": {
+      "risk": "low",
+      "effect": "allow",
+      "allowed_agents": ["research-agent"],
+      "required_scopes": ["tools:search"],
+      "sensitive": false,
+      "egress": false,
+      "category": "knowledge_read"
+    },
+    "send_email": {
+      "risk": "high",
+      "effect": "require_approval",
+      "allowed_agents": ["research-agent"],
+      "required_scopes": ["tools:email:send"],
+      "sensitive": true,
+      "requires_provenance": true,
+      "egress": true,
+      "category": "egress",
+      "max_input_classification": "internal",
+      "classification_violation_action": "deny",
+      "blocked_taint_labels": ["prompt_injection", "secret", "customer-data", "restricted"],
+      "max_egress_bytes": 50000,
+      "hourly_egress_bytes": 250000,
+      "dlp_action": "deny",
+      "blocked_argument_patterns": {
+        "to": ["*@public-mail.invalid"]
+      }
+    },
+    "read_customer_record": {
+      "risk": "high",
+      "effect": "require_approval",
+      "allowed_agents": ["support-agent"],
+      "required_scopes": ["tools:customer:read"],
+      "sensitive": true,
+      "requires_provenance": true,
+      "egress": false,
+      "category": "sensitive_read"
+    },
+    "github_get_issue": {
+      "risk": "low",
+      "effect": "allow",
+      "allowed_agents": ["research-agent", "coding-agent"],
+      "required_scopes": ["tools:github:issues:read"],
+      "sensitive": false,
+      "egress": false,
+      "category": "external_read"
+    },
+    "github_read_file": {
+      "risk": "medium",
+      "effect": "allow",
+      "allowed_agents": ["research-agent", "coding-agent"],
+      "required_scopes": ["tools:github:contents:read"],
+      "sensitive": false,
+      "egress": false,
+      "category": "source_read",
+      "blocked_argument_patterns": {
+        "path": [".env", ".env.*", "*.pem", "*.key", "**/*.pem", "**/*.key"]
+      }
+    },
+    "github_comment_issue": {
+      "risk": "high",
+      "effect": "require_approval",
+      "allowed_agents": ["research-agent", "coding-agent"],
+      "required_scopes": ["tools:github:issues:write"],
+      "sensitive": true,
+      "requires_provenance": true,
+      "egress": true,
+      "category": "github_write",
+      "max_input_classification": "internal",
+      "classification_violation_action": "deny",
+      "blocked_taint_labels": ["prompt_injection", "secret", "customer-data", "restricted"],
+      "dlp_action": "deny"
+    },
+    "github_create_branch": {
+      "risk": "high",
+      "effect": "require_approval",
+      "allowed_agents": ["coding-agent"],
+      "required_scopes": ["tools:github:contents:write"],
+      "sensitive": true,
+      "requires_provenance": true,
+      "egress": false,
+      "category": "github_write",
+      "blocked_taint_labels": ["prompt_injection", "secret", "customer-data", "restricted"],
+      "blocked_argument_patterns": {
+        "branch": ["main", "master"],
+        "from_ref": ["refs/*"]
+      }
+    },
+    "github_create_pull_request": {
+      "risk": "high",
+      "effect": "require_approval",
+      "allowed_agents": ["coding-agent"],
+      "required_scopes": ["tools:github:pull_requests:write"],
+      "sensitive": true,
+      "requires_provenance": true,
+      "egress": true,
+      "category": "github_write",
+      "max_input_classification": "internal",
+      "classification_violation_action": "deny",
+      "blocked_taint_labels": ["prompt_injection", "secret", "customer-data", "restricted"],
+      "dlp_action": "deny",
+      "max_string_length": 20000
+    },
+    "github_update_file": {
+      "risk": "critical",
+      "effect": "require_approval",
+      "allowed_agents": ["coding-agent"],
+      "required_scopes": ["tools:github:contents:write"],
+      "sensitive": true,
+      "requires_provenance": true,
+      "egress": true,
+      "category": "github_write",
+      "max_input_classification": "internal",
+      "classification_violation_action": "deny",
+      "blocked_taint_labels": ["prompt_injection", "secret", "customer-data", "restricted"],
+      "dlp_action": "deny",
+      "max_string_length": 256000,
+      "blocked_argument_patterns": {
+        "branch": ["main", "master"],
+        "path": [".env", ".env.*", "*.pem", "*.key", "**/*.pem", "**/*.key", ".github/workflows/*"]
+      }
+    },
+    "delete_record": {
+      "risk": "critical",
+      "effect": "deny",
+      "allowed_agents": [],
+      "required_scopes": ["tools:record:delete"],
+      "sensitive": true,
+      "requires_provenance": true,
+      "egress": false,
+      "category": "destructive"
+    }
+  }
+}
