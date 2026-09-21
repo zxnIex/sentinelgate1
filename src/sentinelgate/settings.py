@@ -27,6 +27,16 @@ class Settings(BaseSettings):
     issuer: str = "https://sentinelgate.local"
     openai_api_key: str | None = None
     openai_model: str = "gpt-5.6-terra"
+    declassification_allowed_labels: str = "reviewed,false-positive"
+    admin_auth_mode: str = "shared"
+    oidc_issuer: str | None = None
+    oidc_audience: str | None = None
+    oidc_jwks_url: str | None = None
+    oidc_role_claim: str = "roles"
+    oidc_admin_roles: str = "sentinelgate-admin,administrator"
+    oidc_approver_roles: str = "sentinelgate-approver"
+    oidc_analyst_roles: str = "sentinelgate-analyst"
+    oidc_viewer_roles: str = "sentinelgate-viewer"
 
     model_config = SettingsConfigDict(
         env_file=".env", env_prefix="SENTINEL_", extra="ignore"
@@ -57,6 +67,12 @@ def get_settings() -> Settings:
             )
         ):
             raise RuntimeError("Production approval webhook requires a strong secret")
+        if settings.admin_auth_mode not in {"oidc", "hybrid"}:
+            raise RuntimeError("Production requires OIDC administrator authentication")
+        if not all(
+            (settings.oidc_issuer, settings.oidc_audience, settings.oidc_jwks_url)
+        ):
+            raise RuntimeError("Production OIDC configuration is incomplete")
         github_values = (
             settings.github_app_id,
             settings.github_installation_id,

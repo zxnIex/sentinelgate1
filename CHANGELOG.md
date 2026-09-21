@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.8.0 — 2026-09-21
+
+- Added signed, value-bound JSON-pointer field provenance and field-specific sink policy.
+- Added verified deterministic propagation for copy, concatenation, templates and substrings.
+- Added conservative all-input taint union for arbitrary LLM transformations.
+- Added allowlisted, reviewer-attributed and audited field-label declassification.
+- Added optional OIDC administrator federation with strict issuer, audience, signature,
+  expiry and role validation; production refuses shared-token-only administrator access.
+- Added a versioned efficacy corpus reporting exact-match, attack-detection and benign
+  false-positive rates with explicit non-independent scope.
+- Added replay/approval concurrency and fail-closed MCP outage/malformed-response checks.
+- Hardened MCP mediation with response bounds, content-type and request-ID validation,
+  protocol-version headers and bounded cursor pagination.
+- Added a separately deployable public marketing process so production need not expose the
+  control-plane application as the company website.
+- Fixed deterministic test isolation from configured GitHub credentials and guaranteed
+  SQLite connection closure on Windows.
+
 ## 0.7.0 — 2026-09-21
 
 - Added fail-closed mediation for configured stateless HTTP MCP upstreams: automatic

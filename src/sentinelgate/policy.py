@@ -9,6 +9,7 @@ from sentinelgate.models import (
     AgentPrincipal,
     DataClassification,
     Decision,
+    FieldTaint,
     SecurityFinding,
     ToolCallRequest,
     TrustLevel,
@@ -99,12 +100,14 @@ class PolicyEngine:
         principal: AgentPrincipal,
         provenance: list[VerifiedProvenance],
         findings: list[SecurityFinding],
+        field_provenance: dict[str, list[FieldTaint]] | None = None,
     ) -> Evaluation:
         tool = self.tool_config(call.tool_name)
         if tool is None:
             return self._deny("UNKNOWN_TOOL", "critical")
 
         risk = str(tool.get("risk", "high"))
+        field_provenance = field_provenance or {}
         allowed_agents = tool.get("allowed_agents", [])
         if principal.agent_id not in allowed_agents:
             return self._deny("AGENT_NOT_AUTHORIZED", risk)
@@ -137,7 +140,7 @@ class PolicyEngine:
             return Evaluation(Decision.DENY, blocked, risk, self.version)
 
         is_sensitive = bool(tool.get("sensitive", False))
-        if tool.get("requires_provenance", False) and not provenance:
+        if tool.get("requires_provenance", False) and not provenance and not field_provenance:
             return self._deny("MISSING_PROVENANCE", risk)
         if is_sensitive and any(
             item.trust is TrustLevel.UNTRUSTED for item in provenance
@@ -154,6 +157,12 @@ class PolicyEngine:
                 risk,
                 self.version,
             )
+
+        field_result = self._evaluate_field_policies(
+            tool, provenance, field_provenance, risk
+        )
+        if field_result is not None:
+            return field_result
 
         labels = {label for item in provenance for label in item.labels}
         blocked_labels = set(tool.get("blocked_taint_labels", []))
@@ -208,6 +217,80 @@ class PolicyEngine:
             effect = Decision.REQUIRE_APPROVAL
             reasons.append("MIXED_TRUST_REQUIRES_APPROVAL")
         return Evaluation(effect, reasons, risk, self.version)
+
+    def _evaluate_field_policies(
+        self,
+        tool: dict[str, Any],
+        provenance: list[VerifiedProvenance],
+        field_provenance: dict[str, list[FieldTaint]],
+        risk: str,
+    ) -> Evaluation | None:
+        policies = tool.get("field_policies", {})
+        if not isinstance(policies, dict):
+            return self._deny("INVALID_FIELD_POLICY", "critical")
+        for pointer, rule in policies.items():
+            if not isinstance(rule, dict):
+                return self._deny("INVALID_FIELD_POLICY", "critical")
+            contexts = field_provenance.get(str(pointer), [])
+            if not contexts and provenance:
+                contexts = [
+                    FieldTaint(
+                        content_digest="0" * 64,
+                        trust=item.trust,
+                        classification=item.classification,
+                        labels=item.labels,
+                        lineage_ids=[item.lineage_id] if item.lineage_id else [],
+                    )
+                    for item in provenance
+                ]
+            if rule.get("requires_provenance", True) and not contexts:
+                return self._deny(f"FIELD_MISSING_PROVENANCE:{pointer}", risk)
+            labels = {label for item in contexts for label in item.labels}
+            matched = sorted(labels & set(rule.get("blocked_labels", [])))
+            if matched:
+                action = str(rule.get("action", "deny"))
+                decision = (
+                    Decision.REQUIRE_APPROVAL
+                    if action == "require_approval"
+                    else Decision.DENY
+                )
+                return Evaluation(
+                    decision,
+                    [f"FIELD_TAINT_LABEL:{pointer}:{label}" for label in matched],
+                    "critical",
+                    self.version,
+                )
+            if rule.get("deny_untrusted") and any(
+                item.trust is TrustLevel.UNTRUSTED for item in contexts
+            ):
+                return self._deny(f"FIELD_UNTRUSTED:{pointer}", risk)
+            maximum = rule.get("max_classification")
+            if maximum and contexts:
+                try:
+                    limit = DataClassification(str(maximum))
+                except ValueError:
+                    return self._deny("INVALID_FIELD_MAX_CLASSIFICATION", "critical")
+                actual = highest_classification(
+                    item.classification for item in contexts
+                )
+                if classification_exceeds(actual, limit):
+                    action = str(rule.get("action", "deny"))
+                    decision = (
+                        Decision.REQUIRE_APPROVAL
+                        if action == "require_approval"
+                        else Decision.DENY
+                    )
+                    return Evaluation(
+                        decision,
+                        [
+                            f"FIELD_CLASSIFICATION_BLOCKED:{pointer}",
+                            f"CLASSIFICATION:{actual.value}",
+                            f"MAX_ALLOWED:{limit.value}",
+                        ],
+                        "critical",
+                        self.version,
+                    )
+        return None
 
     def _deny(self, reason: str, risk: str) -> Evaluation:
         return Evaluation(Decision.DENY, [reason], risk, self.version)

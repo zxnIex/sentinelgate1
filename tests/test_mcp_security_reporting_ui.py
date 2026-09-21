@@ -71,7 +71,7 @@ def test_mcp_definition_blocks_instructions_and_collisions(store):
 
 def test_security_report_is_evidence_not_certification(store):
     report = security_evidence_report(store, Settings(), 50)
-    assert report["product_version"] == "0.7.0"
+    assert report["product_version"] == "0.8.0"
     assert report["integrity"]["audit_chain_valid"] is True
     assert "not a SOC 2" in report["disclaimer"]
     assert report["control_evidence"]
@@ -106,7 +106,7 @@ def test_public_site_and_multi_page_console(service, store):
         assert policy.json()["version"] == "test-2"
         report = client.get("/v1/reports/security", headers=headers)
         assert report.status_code == 200
-        assert report.json()["product_version"] == "0.7.0"
+        assert report.json()["product_version"] == "0.8.0"
         audit_export = client.get("/v1/reports/audit.csv", headers=headers)
         assert audit_export.status_code == 200
         assert audit_export.headers["content-type"].startswith("text/csv")

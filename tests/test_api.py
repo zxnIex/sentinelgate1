@@ -9,6 +9,10 @@ def test_authenticated_api_flow(service, signer, store):
         admin_token="test-admin",
         token_signing_key="test-token-signing-key-at-least-24",
         audit_signing_key="test-audit-key",
+        github_app_id=None,
+        github_installation_id=None,
+        github_private_key_path=None,
+        github_allowed_repositories="",
     )
     app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[get_service] = lambda: service
@@ -18,7 +22,7 @@ def test_authenticated_api_flow(service, signer, store):
     try:
         client = TestClient(app)
         health = client.get("/health").json()
-        assert health["version"] == "0.7.0"
+        assert health["version"] == "0.8.0"
         assert health["enforcement_mode"] == "enforce"
         schema = client.get("/openapi.json").json()
         schemes = schema["components"]["securitySchemes"]

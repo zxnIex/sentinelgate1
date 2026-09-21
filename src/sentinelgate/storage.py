@@ -4,6 +4,8 @@ import hmac
 import json
 import os
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 from threading import Lock
@@ -45,11 +47,19 @@ class Store:
         self._lock = Lock()
         self._init_schema()
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
         conn = sqlite3.connect(self.path, timeout=10)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys=ON")
-        return conn
+        try:
+            yield conn
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
     def _init_schema(self) -> None:
         with self._connect() as db:
@@ -58,6 +68,9 @@ class Store:
                 CREATE TABLE IF NOT EXISTS audit_events (
                     id TEXT PRIMARY KEY, created_at TEXT NOT NULL, event_type TEXT NOT NULL,
                     payload TEXT NOT NULL, previous_hash TEXT NOT NULL, event_hash TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS schema_migrations (
+                    version TEXT PRIMARY KEY, applied_at TEXT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS approvals_v2 (
                     id TEXT PRIMARY KEY, request_json TEXT NOT NULL, request_hash TEXT NOT NULL,
@@ -131,7 +144,8 @@ class Store:
                     source_type TEXT NOT NULL, source_id TEXT NOT NULL,
                     destination TEXT NOT NULL, trust TEXT NOT NULL,
                     classification TEXT NOT NULL, labels_json TEXT NOT NULL,
-                    content_digest TEXT NOT NULL, created_at TEXT NOT NULL
+                    content_digest TEXT NOT NULL, created_at TEXT NOT NULL,
+                    field_taint_json TEXT NOT NULL DEFAULT '{}'
                 );
                 CREATE INDEX IF NOT EXISTS ix_lineage_trace_time
                     ON lineage_events(tenant_id, agent_id, trace_id, created_at);
@@ -158,6 +172,19 @@ class Store:
                 );
                 """
             )
+            lineage_columns = {
+                row["name"] for row in db.execute("PRAGMA table_info(lineage_events)")
+            }
+            if "field_taint_json" not in lineage_columns:
+                db.execute(
+                    "ALTER TABLE lineage_events ADD COLUMN field_taint_json "
+                    "TEXT NOT NULL DEFAULT '{}'"
+                )
+            for version in ("0001_initial", "0002_field_taint"):
+                db.execute(
+                    "INSERT OR IGNORE INTO schema_migrations VALUES (?, ?)",
+                    (version, utc_now().isoformat()),
+                )
 
     def record_mcp_tool_observation(
         self,
@@ -525,8 +552,11 @@ class Store:
     def record_lineage(self, record: LineageRecord) -> None:
         with self._connect() as db:
             db.execute(
-                """INSERT OR IGNORE INTO lineage_events
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                """INSERT OR IGNORE INTO lineage_events (
+                   id, tenant_id, agent_id, trace_id, request_id, parent_ids_json,
+                   source_type, source_id, destination, trust, classification,
+                   labels_json, content_digest, created_at, field_taint_json
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     record.id,
                     record.tenant_id,
@@ -542,6 +572,14 @@ class Store:
                     json.dumps(sorted(set(record.labels))),
                     record.content_digest,
                     record.created_at.isoformat(),
+                    json.dumps(
+                        {
+                            pointer: item.model_dump(mode="json")
+                            for pointer, item in record.field_taint.items()
+                        },
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
                 ),
             )
 
@@ -1021,6 +1059,9 @@ class Store:
             labels=json.loads(row["labels_json"]),
             content_digest=row["content_digest"],
             created_at=datetime.fromisoformat(row["created_at"]),
+            field_taint=json.loads(row["field_taint_json"])
+            if "field_taint_json" in row
+            else {},
         )
 
     @staticmethod
