@@ -8,6 +8,11 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from sentinelgate.admin_identity import (
+    AdminIdentity,
+    AdminIdentityError,
+    OIDCAdminVerifier,
+)
 from sentinelgate.dashboard import LANDING_HTML, console_page
 from sentinelgate.executor import ToolExecutionError, demo_registry
 from sentinelgate.github_connector import (
@@ -26,6 +31,7 @@ from sentinelgate.models import (
     ApprovalRecord,
     ContainmentRecord,
     ContainmentRequest,
+    DeclassificationRequest,
     ExecutionResult,
     Incident,
     IncidentAction,
@@ -40,6 +46,8 @@ from sentinelgate.models import (
     ProvenanceAttestRequest,
     ReleaseAgentRequest,
     SimulationRequest,
+    StructuredProvenanceAttestRequest,
+    StructuredProvenanceDeriveRequest,
     TokenResponse,
     ToolCallRequest,
     TraceSummary,
@@ -60,7 +68,7 @@ from sentinelgate.upstream_mcp import (
 
 app = FastAPI(
     title="SentinelGate",
-    version="0.7.0",
+    version="0.9.0",
     description="Identity-aware, fail-closed security gateway for AI-agent tool calls.",
 )
 
@@ -82,7 +90,10 @@ async def security_headers(request: Request, call_next):
 admin_bearer = HTTPBearer(
     auto_error=False,
     scheme_name="AdminBearer",
-    description="Raw SENTINEL_ADMIN_TOKEN value. Swagger adds the Bearer prefix.",
+    description=(
+        "OIDC access token in deployments, or raw SENTINEL_ADMIN_TOKEN in development. "
+        "Swagger adds the Bearer prefix."
+    ),
 )
 agent_bearer = HTTPBearer(
     auto_error=False,
@@ -95,9 +106,11 @@ agent_bearer = HTTPBearer(
 def get_store() -> Store:
     settings = get_settings()
     return Store(
-        settings.database_path,
+        settings.database_url or settings.database_path,
         settings.audit_signing_key,
         settings.data_encryption_key,
+        pool_min_size=settings.database_pool_min_size,
+        pool_max_size=settings.database_pool_max_size,
     )
 
 
@@ -152,16 +165,110 @@ def get_upstream_mcp() -> UpstreamMCPManager:
     return UpstreamMCPManager(settings.mcp_upstreams_path, get_store())
 
 
-def require_admin(
+@lru_cache
+def get_admin_verifier() -> OIDCAdminVerifier | None:
+    settings = get_settings()
+    if settings.admin_auth_mode not in {"oidc", "hybrid"}:
+        return None
+    if not all((settings.oidc_issuer, settings.oidc_audience, settings.oidc_jwks_url)):
+        return None
+    return OIDCAdminVerifier(
+        issuer=settings.oidc_issuer,
+        audience=settings.oidc_audience,
+        jwks_url=settings.oidc_jwks_url,
+        role_claim=settings.oidc_role_claim,
+    )
+
+
+def _operator_identity(
     credentials: HTTPAuthorizationCredentials | None = Depends(admin_bearer),
     settings: Settings = Depends(get_settings),
-) -> None:
-    if (
-        credentials is None
-        or credentials.scheme.casefold() != "bearer"
-        or not hmac.compare_digest(credentials.credentials, settings.admin_token)
+) -> AdminIdentity:
+    if credentials is None or credentials.scheme.casefold() != "bearer":
+        raise HTTPException(status_code=401, detail="Administrator bearer token required")
+    token = credentials.credentials
+    if settings.admin_auth_mode in {"shared", "hybrid"} and hmac.compare_digest(
+        token, settings.admin_token
     ):
-        raise HTTPException(status_code=401, detail="Invalid admin token")
+        return AdminIdentity(
+            subject="shared-development-administrator",
+            email=None,
+            roles=frozenset({"administrator"}),
+        )
+    verifier = get_admin_verifier()
+    if verifier is None:
+        raise HTTPException(status_code=401, detail="Invalid administrator token")
+    try:
+        identity = verifier.verify(token)
+    except AdminIdentityError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    return identity
+
+
+def _allowed_roles(settings: Settings, minimum: str) -> set[str]:
+    hierarchy = {
+        "viewer": [settings.oidc_viewer_roles],
+        "analyst": [settings.oidc_viewer_roles, settings.oidc_analyst_roles],
+        "approver": [settings.oidc_viewer_roles, settings.oidc_approver_roles],
+        "administrator": [settings.oidc_admin_roles],
+    }
+    if minimum == "viewer":
+        values = [
+            settings.oidc_viewer_roles,
+            settings.oidc_analyst_roles,
+            settings.oidc_approver_roles,
+            settings.oidc_admin_roles,
+        ]
+    elif minimum == "analyst":
+        values = [settings.oidc_analyst_roles, settings.oidc_admin_roles]
+    elif minimum == "approver":
+        values = [settings.oidc_approver_roles, settings.oidc_admin_roles]
+    else:
+        values = hierarchy["administrator"]
+    return {
+        role.strip().casefold()
+        for value in values
+        for role in value.split(",")
+        if role.strip()
+    }
+
+
+def _enforce_operator_role(
+    identity: AdminIdentity, settings: Settings, minimum: str
+) -> AdminIdentity:
+    if "administrator" in identity.roles:
+        return identity
+    if not identity.roles.intersection(_allowed_roles(settings, minimum)):
+        raise HTTPException(status_code=403, detail=f"{minimum.title()} role required")
+    return identity
+
+
+def require_admin(
+    identity: AdminIdentity = Depends(_operator_identity),
+    settings: Settings = Depends(get_settings),
+) -> AdminIdentity:
+    return _enforce_operator_role(identity, settings, "administrator")
+
+
+def require_approver(
+    identity: AdminIdentity = Depends(_operator_identity),
+    settings: Settings = Depends(get_settings),
+) -> AdminIdentity:
+    return _enforce_operator_role(identity, settings, "approver")
+
+
+def require_analyst(
+    identity: AdminIdentity = Depends(_operator_identity),
+    settings: Settings = Depends(get_settings),
+) -> AdminIdentity:
+    return _enforce_operator_role(identity, settings, "analyst")
+
+
+def require_viewer(
+    identity: AdminIdentity = Depends(_operator_identity),
+    settings: Settings = Depends(get_settings),
+) -> AdminIdentity:
+    return _enforce_operator_role(identity, settings, "viewer")
 
 
 def require_agent(
@@ -188,6 +295,20 @@ def health(store: Store = Depends(get_store)) -> dict[str, object]:
         "enforcement_mode": get_settings().enforcement_mode.value,
         "audit_chain_valid": store.verify_audit_chain(),
     }
+
+
+@app.get("/ready")
+def ready(store: Store = Depends(get_store)) -> dict[str, object]:
+    settings = get_settings()
+    checks = {
+        "database": store.backend,
+        "audit_chain_valid": store.verify_audit_chain(),
+        "policy_file": settings.policy_path.is_file(),
+        "mcp_configuration": settings.mcp_upstreams_path.is_file(),
+    }
+    if not checks["audit_chain_valid"] or not checks["policy_file"]:
+        raise HTTPException(status_code=503, detail={"status": "not_ready", "checks": checks})
+    return {"status": "ready", "checks": checks}
 
 
 @app.post("/mcp")
@@ -227,7 +348,7 @@ def inspect_mcp_server(
     return inspect_manifest(server_id, request, store)
 
 
-@app.get("/v1/mcp/servers", dependencies=[Depends(require_admin)])
+@app.get("/v1/mcp/servers", dependencies=[Depends(require_viewer)])
 def mcp_servers(store: Store = Depends(get_store)) -> list[dict]:
     return store.list_mcp_tool_baselines()
 
@@ -262,7 +383,7 @@ def issue_agent_token(
 @app.get(
     "/v1/agents",
     response_model=list[AgentRecord],
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_viewer)],
 )
 def agents(
     tenant_id: str | None = None,
@@ -334,6 +455,153 @@ def attest_provenance(
     return response
 
 
+@app.post(
+    "/v1/provenance/attest-structured", response_model=ProvenanceAttestation
+)
+def attest_structured_provenance(
+    request: StructuredProvenanceAttestRequest,
+    principal: AgentPrincipal = Depends(require_agent),
+    provenance: ProvenanceService = Depends(get_provenance),
+    store: Store = Depends(get_store),
+) -> ProvenanceAttestation:
+    trusted_field_claim = any(
+        str(override.get("trust", "")).casefold() == "trusted"
+        for override in request.field_overrides.values()
+    )
+    required_scope = (
+        "provenance:attest:trusted"
+        if request.trust.value == "trusted" or trusted_field_claim
+        else "provenance:attest"
+    )
+    if required_scope not in principal.scopes:
+        raise HTTPException(status_code=403, detail=f"Missing {required_scope} scope")
+    try:
+        response = provenance.attest_structured(request, principal.tenant_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if request.trace_id:
+        store.record_lineage(
+            LineageRecord(
+                id=response.lineage_id,
+                tenant_id=principal.tenant_id,
+                agent_id=principal.agent_id,
+                trace_id=request.trace_id,
+                source_type="structured_input",
+                source_id=request.source_id,
+                destination="model_context",
+                trust=response.trust,
+                classification=response.classification,
+                labels=response.labels,
+                content_digest=response.content_digest,
+                created_at=utc_now(),
+                field_taint=response.field_taint,
+            )
+        )
+    store.append_audit(
+        "structured_provenance_attested",
+        {
+            "agent_id": principal.agent_id,
+            "tenant_id": principal.tenant_id,
+            "source_id": request.source_id,
+            "content_digest": response.content_digest,
+            "field_count": len(response.field_taint),
+        },
+    )
+    return response
+
+
+@app.post(
+    "/v1/provenance/derive-structured", response_model=ProvenanceAttestation
+)
+def derive_structured_provenance(
+    request: StructuredProvenanceDeriveRequest,
+    principal: AgentPrincipal = Depends(require_agent),
+    provenance: ProvenanceService = Depends(get_provenance),
+    store: Store = Depends(get_store),
+) -> ProvenanceAttestation:
+    if "provenance:derive" not in principal.scopes:
+        raise HTTPException(status_code=403, detail="Missing provenance:derive scope")
+    try:
+        response = provenance.derive_structured(request, principal.tenant_id)
+    except (TokenError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    store.record_lineage(
+        LineageRecord(
+            id=response.lineage_id,
+            tenant_id=principal.tenant_id,
+            agent_id=principal.agent_id,
+            trace_id=request.trace_id,
+            parent_ids=sorted(
+                {
+                    lineage
+                    for item in response.field_taint.values()
+                    for lineage in item.lineage_ids
+                    if lineage != response.lineage_id
+                }
+            ),
+            source_type=f"derived_{request.mode}",
+            source_id=request.source_id,
+            destination="model_context",
+            trust=response.trust,
+            classification=response.classification,
+            labels=response.labels,
+            content_digest=response.content_digest,
+            created_at=utc_now(),
+            field_taint=response.field_taint,
+        )
+    )
+    store.append_audit(
+        "structured_provenance_derived",
+        {
+            "agent_id": principal.agent_id,
+            "tenant_id": principal.tenant_id,
+            "source_id": request.source_id,
+            "mode": request.mode,
+            "field_count": len(response.field_taint),
+            "content_digest": response.content_digest,
+        },
+    )
+    return response
+
+
+@app.post(
+    "/v1/provenance/declassify",
+    response_model=ProvenanceAttestation,
+    dependencies=[Depends(require_admin)],
+)
+def declassify_provenance(
+    request: DeclassificationRequest,
+    provenance: ProvenanceService = Depends(get_provenance),
+    store: Store = Depends(get_store),
+    settings: Settings = Depends(get_settings),
+) -> ProvenanceAttestation:
+    allowed = set(settings.declassification_allowed_labels.split(",")) - {""}
+    requested = {item.casefold() for item in request.remove_labels}
+    if not requested.issubset(allowed):
+        raise HTTPException(status_code=403, detail="Label is not declassifiable by policy")
+    try:
+        response = provenance.declassify_labels(
+            token=request.token,
+            tenant_id=request.tenant_id,
+            paths=request.paths,
+            remove_labels=requested,
+            reviewer=request.reviewer,
+        )
+    except TokenError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    store.append_audit(
+        "field_labels_declassified",
+        {
+            "reviewer": request.reviewer,
+            "reason": request.reason,
+            "paths": request.paths,
+            "removed_labels": sorted(requested),
+            "lineage_id": response.lineage_id,
+        },
+    )
+    return response
+
+
 @app.post("/v1/evaluate", response_model=PolicyDecision)
 def evaluate(
     call: ToolCallRequest,
@@ -365,7 +633,7 @@ def execute(
 @app.get(
     "/v1/approvals",
     response_model=list[ApprovalRecord],
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_viewer)],
 )
 def approvals(
     status: str | None = Query(
@@ -379,7 +647,7 @@ def approvals(
 @app.post(
     "/v1/approvals/{approval_id}/approve",
     response_model=ApprovalRecord,
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_approver)],
 )
 def approve(
     approval_id: str,
@@ -402,7 +670,7 @@ def approve(
 @app.post(
     "/v1/approvals/{approval_id}/reject",
     response_model=ApprovalRecord,
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_approver)],
 )
 def reject(
     approval_id: str,
@@ -425,7 +693,7 @@ def reject(
 @app.post(
     "/v1/approvals/{approval_id}/execute",
     response_model=ExecutionResult,
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_approver)],
 )
 def execute_approved(
     approval_id: str,
@@ -442,7 +710,7 @@ def execute_approved(
 @app.post(
     "/v1/simulate",
     response_model=list[PolicyDecision],
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_analyst)],
 )
 def simulate(
     request: SimulationRequest,
@@ -454,7 +722,7 @@ def simulate(
 @app.post(
     "/v1/policy/replay",
     response_model=PolicyReplayResult,
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_analyst)],
 )
 def replay_policy(
     request: PolicyReplayRequest,
@@ -466,12 +734,12 @@ def replay_policy(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-@app.get("/v1/policy", dependencies=[Depends(require_admin)])
+@app.get("/v1/policy", dependencies=[Depends(require_viewer)])
 def current_policy(service: GatewayService = Depends(get_service)) -> dict:
     return service.policy.as_mapping()
 
 
-@app.get("/v1/connectors", dependencies=[Depends(require_admin)])
+@app.get("/v1/connectors", dependencies=[Depends(require_viewer)])
 def connectors(
     settings: Settings = Depends(get_settings),
     manager: UpstreamMCPManager = Depends(get_upstream_mcp),
@@ -550,7 +818,7 @@ def verify_github_connector(
 @app.get(
     "/v1/incidents",
     response_model=list[Incident],
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_viewer)],
 )
 def incidents(
     limit: int = Query(default=100, ge=1, le=500),
@@ -562,7 +830,7 @@ def incidents(
 @app.post(
     "/v1/incidents/{incident_id}/status",
     response_model=Incident,
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_analyst)],
 )
 def update_incident(
     incident_id: str,
@@ -578,7 +846,7 @@ def update_incident(
 @app.get(
     "/v1/containments",
     response_model=list[ContainmentRecord],
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_viewer)],
 )
 def containments(
     active_only: bool = True,
@@ -649,7 +917,7 @@ def release_agent(
     return {"released": released}
 
 
-@app.get("/v1/audit", dependencies=[Depends(require_admin)])
+@app.get("/v1/audit", dependencies=[Depends(require_viewer)])
 def audit(
     limit: int = Query(default=100, ge=1, le=500),
     store: Store = Depends(get_store),
@@ -660,7 +928,7 @@ def audit(
 @app.get(
     "/v1/activity",
     response_model=list[ActivityEvent],
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_viewer)],
 )
 def activity(
     limit: int = Query(default=100, ge=1, le=500),
@@ -675,7 +943,7 @@ def activity(
 @app.get(
     "/v1/traces",
     response_model=list[TraceSummary],
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_viewer)],
 )
 def traces(
     limit: int = Query(default=100, ge=1, le=500),
@@ -687,7 +955,7 @@ def traces(
 @app.get(
     "/v1/traces/{trace_id}/lineage",
     response_model=list[LineageRecord],
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_viewer)],
 )
 def trace_lineage(
     trace_id: str,
@@ -697,12 +965,12 @@ def trace_lineage(
     return store.list_lineage(trace_id, tenant_id)
 
 
-@app.get("/v1/metrics", dependencies=[Depends(require_admin)])
+@app.get("/v1/metrics", dependencies=[Depends(require_viewer)])
 def metrics(store: Store = Depends(get_store)) -> dict[str, int]:
     return store.metrics()
 
 
-@app.get("/v1/reports/security", dependencies=[Depends(require_admin)])
+@app.get("/v1/reports/security", dependencies=[Depends(require_viewer)])
 def security_report(
     limit: int = Query(default=500, ge=1, le=5000),
     store: Store = Depends(get_store),
@@ -714,7 +982,7 @@ def security_report(
 @app.get(
     "/v1/reports/audit.csv",
     response_class=PlainTextResponse,
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_viewer)],
 )
 def audit_csv(
     limit: int = Query(default=500, ge=1, le=5000),
@@ -739,7 +1007,7 @@ def audit_csv(
 
 
 @app.get(
-    "/metrics", response_class=PlainTextResponse, dependencies=[Depends(require_admin)]
+    "/metrics", response_class=PlainTextResponse, dependencies=[Depends(require_viewer)]
 )
 def prometheus_metrics(store: Store = Depends(get_store)) -> str:
     return (

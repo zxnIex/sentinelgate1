@@ -28,7 +28,7 @@ def handle_mcp(
             {
                 "protocolVersion": PROTOCOL_VERSION,
                 "capabilities": {"tools": {"listChanged": False}},
-                "serverInfo": {"name": "SentinelGate", "version": "0.7.0"},
+                "serverInfo": {"name": "SentinelGate", "version": "0.9.0"},
                 "instructions": (
                     "All tool calls are identity-, provenance-, taint- and policy-checked. "
                     "Pass trace metadata in params._meta.sentinelgate."

@@ -4,6 +4,8 @@ import hmac
 import json
 import os
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 from threading import Lock
@@ -12,6 +14,21 @@ from uuid import uuid4
 
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+try:
+    import psycopg
+    from psycopg.rows import dict_row
+    from psycopg_pool import ConnectionPool
+except ImportError:  # pragma: no cover - installation requires the dependency
+    psycopg = None
+    dict_row = None
+    ConnectionPool = None
+
+DATABASE_INTEGRITY_ERRORS = (
+    (sqlite3.IntegrityError, psycopg.IntegrityError)
+    if psycopg is not None
+    else (sqlite3.IntegrityError,)
+)
 
 from sentinelgate.models import (
     ActivityEvent,
@@ -34,22 +51,104 @@ class StorageIntegrityError(RuntimeError):
     pass
 
 
+class _PostgresConnection:
+    """Small DB-API compatibility layer for the store's portable SQL subset."""
+
+    def __init__(self, connection: Any):
+        self.connection = connection
+
+    @staticmethod
+    def _sql(statement: str) -> str:
+        if statement.strip().upper() == "BEGIN IMMEDIATE":
+            return "BEGIN"
+        return statement.replace("LIMIT -1 OFFSET", "OFFSET").replace("?", "%s")
+
+    def execute(self, statement: str, parameters: tuple[Any, ...] = ()) -> Any:
+        return self.connection.execute(self._sql(statement), parameters)
+
+    def executescript(self, script: str) -> None:
+        for statement in script.split(";"):
+            if statement.strip():
+                self.connection.execute(statement)
+
+
 class Store:
-    def __init__(self, path: Path, signing_key: str, encryption_key: str):
+    def __init__(
+        self,
+        path: Path | str,
+        signing_key: str,
+        encryption_key: str,
+        pool_min_size: int = 1,
+        pool_max_size: int = 10,
+    ):
         if len(encryption_key) < 24:
             raise ValueError("Data encryption key must be at least 24 characters")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        self.path = path
+        database = str(path)
+        self._postgres = database.startswith(("postgresql://", "postgresql+psycopg://"))
+        self._pool = None
+        if self._postgres:
+            if ConnectionPool is None:
+                raise RuntimeError("PostgreSQL support requires psycopg and psycopg-pool")
+            database = database.replace("postgresql+psycopg://", "postgresql://", 1)
+            self._pool = ConnectionPool(
+                database,
+                min_size=pool_min_size,
+                max_size=pool_max_size,
+                kwargs={"row_factory": dict_row},
+                open=True,
+            )
+            self.path = None
+        else:
+            sqlite_path = Path(path)
+            sqlite_path.parent.mkdir(parents=True, exist_ok=True)
+            self.path = sqlite_path
         self.key = signing_key.encode("utf-8")
         self._cipher = AESGCM(hashlib.sha256(encryption_key.encode("utf-8")).digest())
         self._lock = Lock()
         self._init_schema()
 
-    def _connect(self) -> sqlite3.Connection:
+    @property
+    def backend(self) -> str:
+        return "postgresql" if self._postgres else "sqlite"
+
+    def close(self) -> None:
+        if self._pool is not None:
+            self._pool.close()
+
+    def _transaction_lock(self, db: Any, name: str) -> None:
+        if self._postgres:
+            db.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended(?, 0))",
+                (name,),
+            )
+
+    @staticmethod
+    def _scalar(db: Any, statement: str, parameters: tuple[Any, ...] = ()) -> int:
+        row = db.execute(statement, parameters).fetchone()
+        return int(next(iter(row.values())) if isinstance(row, dict) else row[0])
+
+    @contextmanager
+    def _connect(self) -> Iterator[Any]:
+        if self._pool is not None:
+            with self._pool.connection() as connection:
+                try:
+                    yield _PostgresConnection(connection)
+                    connection.commit()
+                except BaseException:
+                    connection.rollback()
+                    raise
+            return
         conn = sqlite3.connect(self.path, timeout=10)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys=ON")
-        return conn
+        try:
+            yield conn
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
     def _init_schema(self) -> None:
         with self._connect() as db:
@@ -58,6 +157,9 @@ class Store:
                 CREATE TABLE IF NOT EXISTS audit_events (
                     id TEXT PRIMARY KEY, created_at TEXT NOT NULL, event_type TEXT NOT NULL,
                     payload TEXT NOT NULL, previous_hash TEXT NOT NULL, event_hash TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS schema_migrations (
+                    version TEXT PRIMARY KEY, applied_at TEXT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS approvals_v2 (
                     id TEXT PRIMARY KEY, request_json TEXT NOT NULL, request_hash TEXT NOT NULL,
@@ -131,7 +233,8 @@ class Store:
                     source_type TEXT NOT NULL, source_id TEXT NOT NULL,
                     destination TEXT NOT NULL, trust TEXT NOT NULL,
                     classification TEXT NOT NULL, labels_json TEXT NOT NULL,
-                    content_digest TEXT NOT NULL, created_at TEXT NOT NULL
+                    content_digest TEXT NOT NULL, created_at TEXT NOT NULL,
+                    field_taint_json TEXT NOT NULL DEFAULT '{}'
                 );
                 CREATE INDEX IF NOT EXISTS ix_lineage_trace_time
                     ON lineage_events(tenant_id, agent_id, trace_id, created_at);
@@ -158,6 +261,29 @@ class Store:
                 );
                 """
             )
+            if self._postgres:
+                lineage_columns = {
+                    row["column_name"]
+                    for row in db.execute(
+                        "SELECT column_name FROM information_schema.columns "
+                        "WHERE table_schema='public' AND table_name='lineage_events'"
+                    ).fetchall()
+                }
+            else:
+                lineage_columns = {
+                    row["name"]
+                    for row in db.execute("PRAGMA table_info(lineage_events)")
+                }
+            if "field_taint_json" not in lineage_columns:
+                db.execute(
+                    "ALTER TABLE lineage_events ADD COLUMN field_taint_json "
+                    "TEXT NOT NULL DEFAULT '{}'"
+                )
+            for version in ("0001_initial", "0002_field_taint"):
+                db.execute(
+                    "INSERT INTO schema_migrations VALUES (?, ?) ON CONFLICT DO NOTHING",
+                    (version, utc_now().isoformat()),
+                )
 
     def record_mcp_tool_observation(
         self,
@@ -450,11 +576,12 @@ class Store:
         cutoff = (now - timedelta(hours=1)).isoformat()
         with self._lock, self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
+            self._transaction_lock(db, f"egress:{tenant_id}:{agent_id}")
             db.execute("DELETE FROM egress_events WHERE created_at < ?", (cutoff,))
             used = db.execute(
-                "SELECT COALESCE(SUM(bytes),0) FROM egress_events WHERE tenant_id=? AND agent_id=? AND created_at>=?",
+                "SELECT COALESCE(SUM(bytes),0) AS total_bytes FROM egress_events WHERE tenant_id=? AND agent_id=? AND created_at>=?",
                 (tenant_id, agent_id, cutoff),
-            ).fetchone()[0]
+            ).fetchone()["total_bytes"]
             if used + amount > hourly_limit:
                 return False
             db.execute(
@@ -469,10 +596,10 @@ class Store:
         cutoff = (utc_now() - timedelta(hours=1)).isoformat()
         with self._connect() as db:
             used = db.execute(
-                """SELECT COALESCE(SUM(bytes),0) FROM egress_events
+                """SELECT COALESCE(SUM(bytes),0) AS total_bytes FROM egress_events
                    WHERE tenant_id=? AND agent_id=? AND created_at>=?""",
                 (tenant_id, agent_id, cutoff),
-            ).fetchone()[0]
+            ).fetchone()["total_bytes"]
         return bool(used + amount <= hourly_limit)
 
     def record_action(
@@ -525,8 +652,12 @@ class Store:
     def record_lineage(self, record: LineageRecord) -> None:
         with self._connect() as db:
             db.execute(
-                """INSERT OR IGNORE INTO lineage_events
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                """INSERT INTO lineage_events (
+                   id, tenant_id, agent_id, trace_id, request_id, parent_ids_json,
+                   source_type, source_id, destination, trust, classification,
+                   labels_json, content_digest, created_at, field_taint_json
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT DO NOTHING""",
                 (
                     record.id,
                     record.tenant_id,
@@ -542,6 +673,14 @@ class Store:
                     json.dumps(sorted(set(record.labels))),
                     record.content_digest,
                     record.created_at.isoformat(),
+                    json.dumps(
+                        {
+                            pointer: item.model_dump(mode="json")
+                            for pointer, item in record.field_taint.items()
+                        },
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
                 ),
             )
 
@@ -553,7 +692,7 @@ class Store:
         if tenant_id:
             query += " AND tenant_id=?"
             params.append(tenant_id)
-        query += " ORDER BY created_at, rowid"
+        query += " ORDER BY created_at, id"
         with self._connect() as db:
             rows = db.execute(query, tuple(params)).fetchall()
         return [self._lineage_from_row(row) for row in rows]
@@ -568,7 +707,7 @@ class Store:
         with self._connect() as db:
             rows = db.execute(
                 """SELECT * FROM lineage_events WHERE tenant_id=? AND agent_id=?
-                   AND created_at>=? ORDER BY created_at, rowid""",
+                   AND created_at>=? ORDER BY created_at, id""",
                 (tenant_id, agent_id, cutoff),
             ).fetchall()
         return [self._lineage_from_row(row) for row in rows]
@@ -604,8 +743,9 @@ class Store:
             payload, sort_keys=True, separators=(",", ":"), default=str
         )
         with self._lock, self._connect() as db:
+            self._transaction_lock(db, "audit-chain")
             row = db.execute(
-                "SELECT event_hash FROM audit_events ORDER BY rowid DESC LIMIT 1"
+                "SELECT event_hash FROM audit_events ORDER BY created_at DESC, id DESC LIMIT 1"
             ).fetchone()
             previous = row["event_hash"] if row else "GENESIS"
             message = (
@@ -678,6 +818,7 @@ class Store:
         now = utc_now()
         with self._lock, self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
+            self._transaction_lock(db, f"approval:{approval_id}")
             row = db.execute(
                 "SELECT * FROM approvals_v2 WHERE id=?", (approval_id,)
             ).fetchone()
@@ -700,6 +841,7 @@ class Store:
         now = utc_now()
         with self._lock, self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
+            self._transaction_lock(db, f"approval:{approval_id}")
             row = db.execute(
                 "SELECT * FROM approvals_v2 WHERE id=?", (approval_id,)
             ).fetchone()
@@ -725,7 +867,7 @@ class Store:
                     (request_id, digest, utc_now().isoformat()),
                 )
             return True
-        except sqlite3.IntegrityError:
+        except DATABASE_INTEGRITY_ERRORS:
             return False
 
     def finish_execution(self, request_id: str, status: str) -> None:
@@ -742,6 +884,7 @@ class Store:
         cutoff = (now - timedelta(seconds=window_seconds)).isoformat()
         with self._lock, self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
+            self._transaction_lock(db, f"rate:{tenant_id}:{agent_id}")
             db.execute("DELETE FROM rate_events WHERE created_at < ?", (cutoff,))
             count = db.execute(
                 "SELECT COUNT(*) AS n FROM rate_events WHERE tenant_id=? AND agent_id=? AND created_at>=?",
@@ -832,6 +975,7 @@ class Store:
         ranks = {"low": 0, "medium": 1, "high": 2, "critical": 3}
         with self._lock, self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
+            self._transaction_lock(db, f"incident:{tenant_id}:{agent_id}:{trace_id}")
             row = db.execute(
                 "SELECT * FROM incidents WHERE tenant_id=? AND agent_id=? AND trace_id=?",
                 (tenant_id, agent_id, trace_id),
@@ -890,54 +1034,56 @@ class Store:
     def metrics(self) -> dict[str, int]:
         with self._connect() as db:
             return {
-                "audit_events": db.execute(
+                "audit_events": self._scalar(db,
                     "SELECT COUNT(*) FROM audit_events"
-                ).fetchone()[0],
-                "pending_approvals": db.execute(
+                ),
+                "pending_approvals": self._scalar(db,
                     "SELECT COUNT(*) FROM approvals_v2 WHERE status='pending'"
-                ).fetchone()[0],
-                "open_incidents": db.execute(
+                ),
+                "open_incidents": self._scalar(db,
                     "SELECT COUNT(*) FROM incidents WHERE status='open'"
-                ).fetchone()[0],
-                "quarantined_agents": db.execute(
+                ),
+                "quarantined_agents": self._scalar(db,
                     """SELECT COUNT(DISTINCT tenant_id || ':' || agent_id)
                        FROM containments WHERE released_at IS NULL AND expires_at>?
                        AND mode IN ('quarantine','revoke')""",
                     (utc_now().isoformat(),),
-                ).fetchone()[0],
-                "active_containments": db.execute(
+                ),
+                "active_containments": self._scalar(db,
                     "SELECT COUNT(*) FROM containments WHERE released_at IS NULL AND expires_at>?",
                     (utc_now().isoformat(),),
-                ).fetchone()[0],
-                "registered_agents": db.execute("SELECT COUNT(*) FROM agents").fetchone()[0],
-                "successful_executions": db.execute(
+                ),
+                "registered_agents": self._scalar(db, "SELECT COUNT(*) FROM agents"),
+                "successful_executions": self._scalar(db,
                     "SELECT COUNT(*) FROM executions WHERE status='succeeded'"
-                ).fetchone()[0],
-                "failed_executions": db.execute(
+                ),
+                "failed_executions": self._scalar(db,
                     "SELECT COUNT(*) FROM executions WHERE status='failed'"
-                ).fetchone()[0],
-                "tainted_traces": db.execute(
+                ),
+                "tainted_traces": self._scalar(db,
                     """SELECT COUNT(DISTINCT tenant_id || ':' || agent_id || ':' || trace_id)
                        FROM lineage_events WHERE classification IN ('confidential','restricted')
                        OR labels_json LIKE '%prompt_injection%'
                        OR labels_json LIKE '%customer-data%'
                        OR labels_json LIKE '%secret%'"""
-                ).fetchone()[0],
-                "mcp_tools_baselined": db.execute(
+                ),
+                "mcp_tools_baselined": self._scalar(db,
                     "SELECT COUNT(*) FROM mcp_tool_baselines"
-                ).fetchone()[0],
+                ),
             }
 
     def recent_audit(self, limit: int = 100) -> list[dict[str, Any]]:
         with self._connect() as db:
             rows = db.execute(
-                "SELECT * FROM audit_events ORDER BY rowid DESC LIMIT ?", (limit,)
+                "SELECT * FROM audit_events ORDER BY created_at DESC, id DESC LIMIT ?", (limit,)
             ).fetchall()
         return [dict(row) | {"payload": json.loads(row["payload"])} for row in rows]
 
     def verify_audit_chain(self) -> bool:
         with self._connect() as db:
-            rows = db.execute("SELECT * FROM audit_events ORDER BY rowid").fetchall()
+            rows = db.execute(
+                "SELECT * FROM audit_events ORDER BY created_at, id"
+            ).fetchall()
         previous = "GENESIS"
         for row in rows:
             if row["previous_hash"] != previous:
@@ -1021,6 +1167,9 @@ class Store:
             labels=json.loads(row["labels_json"]),
             content_digest=row["content_digest"],
             created_at=datetime.fromisoformat(row["created_at"]),
+            field_taint=json.loads(row["field_taint_json"])
+            if "field_taint_json" in row
+            else {},
         )
 
     @staticmethod

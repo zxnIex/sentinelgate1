@@ -1,8 +1,10 @@
 # SentinelGate
 
+> v0.9 is a design-partner release, not an independently validated enterprise-production claim.
+
 SentinelGate is an identity-aware, fail-closed security gateway for custom tools used by autonomous AI agents. It mediates an action before application code executes it and returns one of three outcomes: `allow`, `deny`, or `require_approval`.
 
-Version 0.7 is a tested design-partner MVP—not a claim of production certification. Its narrow promise is:
+Version 0.8 is a tested design-partner release—not a claim of production certification. Its narrow promise is:
 
 > Prevent unauthorized agent tool execution and unsafe information flow while preserving reviewable evidence for every decision.
 
@@ -52,6 +54,11 @@ OpenAI's Responses API returns custom function calls to application code. Sentin
 - Monotonic trace-level taint that cannot be cleared by omitting a token
 - `public`, `internal`, `confidential` and `restricted` classifications
 - Per-sink maximum classification and blocked-taint policies
+- Signed JSON-pointer field provenance bound to exact leaf-value digests
+- Field-specific sink policy for trust, classification and labels
+- Verified copy, concatenation, template and substring propagation
+- Conservative all-input union for arbitrary LLM transformations
+- Explicit, allowlisted and audited label declassification
 
 ### Real knowledge connector
 
@@ -148,6 +155,16 @@ Injection matching is a signal, not the security boundary. Identity, provenance,
 - Automatic `tools/list` discovery and refresh before each remote `tools/call`
 - Policy-bound server identity so clients cannot self-assert a trusted MCP source
 - Fail-closed refusal of blocked, changed, stale or uninspected tool definitions
+- Bounded response bodies, JSON content-type enforcement and JSON-RPC ID matching
+- Bounded `tools/list` cursor pagination
+
+### Federated administrator identity
+
+- Development-only shared-token mode for local evaluation
+- OIDC issuer, audience, signature, expiry and role verification for deployments
+- Existing Entra, Okta, Auth0 and other standards-compliant providers can supply identity
+- Production configuration refuses shared-token-only administrator authentication
+- Viewer, analyst, approver and administrator role tiers are mapped from provider claims
 
 ### Operational approvals
 
@@ -210,6 +227,28 @@ uvicorn sentinelgate.api:app --reload
 - Product website: <http://127.0.0.1:8000/>
 - Operator console: <http://127.0.0.1:8000/console>
 - Health check: <http://127.0.0.1:8000/health>
+- Readiness check: <http://127.0.0.1:8000/ready>
+
+Run the complete reproducible evidence suite:
+
+```bash
+python -m sentinelgate.benchmark_suite --iterations 2000 --output evidence/benchmark.json
+```
+
+The ten-case deterministic suite is reported as regression conformance, not efficacy. v0.9 also
+ships 100 adversarial probes and a live HTTP concurrency harness. See
+[`docs/BENCHMARKING.md`](docs/BENCHMARKING.md). Integration guidance is in
+[`docs/INTEGRATION.md`](docs/INTEGRATION.md), with database deployment in
+[`docs/POSTGRESQL.md`](docs/POSTGRESQL.md).
+
+The report includes local policy-path latency, corpus exact-match/detection/false-positive
+rates, and deterministic connector-failure/concurrency checks. The bundled corpus is
+project-authored and must not be presented as independent validation.
+
+For public deployment, run `sentinelgate.marketing:app` as the internet-facing website and
+keep `sentinelgate.api:app` private behind HTTPS and OIDC-aware access controls. `compose.yaml`
+demonstrates this split: port 8080 is the public site and the control plane binds only to
+localhost port 8000.
 
 Paste the raw `SENTINEL_ADMIN_TOKEN` value into the operator console. Do not prefix it with
 `Bearer`; the browser adds that authentication scheme itself. Restart Uvicorn after editing

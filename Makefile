@@ -1,4 +1,4 @@
-.PHONY: install run test lint security verify redteam build
+.PHONY: install run test lint security verify redteam evidence build
 
 install:
 	python -m pip install -e ".[dev]" -r requirements-dev.txt
@@ -18,6 +18,10 @@ security:
 
 redteam:
 	python -m sentinelgate.redteam
+
+evidence:
+	python -m sentinelgate.benchmark_suite --iterations 2000 --output evidence/benchmark-v0.9.json
+	python -m sentinelgate.adversarial_evaluation --output evidence/adversarial-v0.9.json
 
 verify: lint test redteam security
 

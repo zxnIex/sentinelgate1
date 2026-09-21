@@ -164,12 +164,34 @@ class UpstreamMCPManager:
     def _discover(
         self, server_id: str, config: dict[str, Any]
     ) -> list[MCPToolDefinition]:
-        response = self._post(config, {
-            "jsonrpc": "2.0", "id": "sentinelgate-list", "method": "tools/list",
-        })
-        result = response.get("result")
-        raw_tools = result.get("tools") if isinstance(result, dict) else None
-        if not isinstance(raw_tools, list) or not raw_tools:
+        raw_tools: list[object] = []
+        cursor: str | None = None
+        for page in range(20):
+            request_id = f"sentinelgate-list-{page}"
+            payload: dict[str, Any] = {
+                "jsonrpc": "2.0", "id": request_id, "method": "tools/list",
+            }
+            if cursor is not None:
+                payload["params"] = {"cursor": cursor}
+            response = self._post(config, payload)
+            result = response.get("result")
+            page_tools = result.get("tools") if isinstance(result, dict) else None
+            if not isinstance(page_tools, list):
+                raise UpstreamMCPError(
+                    f"MCP server {server_id} returned an invalid tools page"
+                )
+            raw_tools.extend(page_tools)
+            if len(raw_tools) > 500:
+                raise UpstreamMCPError("MCP server exposes more than 500 tools")
+            next_cursor = result.get("nextCursor")
+            if next_cursor is None:
+                break
+            if not isinstance(next_cursor, str) or not next_cursor or next_cursor == cursor:
+                raise UpstreamMCPError("MCP server returned an invalid pagination cursor")
+            cursor = next_cursor
+        else:
+            raise UpstreamMCPError("MCP tools/list exceeded 20 pages")
+        if not raw_tools:
             raise UpstreamMCPError(f"MCP server {server_id} returned no valid tools")
         try:
             return [MCPToolDefinition.model_validate(item) for item in raw_tools]
@@ -178,7 +200,11 @@ class UpstreamMCPManager:
 
     def _post(self, config: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
         url = str(config["url"])
-        headers = {"Content-Type": "application/json", "Accept": "application/json"}
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "MCP-Protocol-Version": str(config.get("protocol_version", "2025-06-18")),
+        }
         token_env = config.get("bearer_token_env")
         if token_env:
             token = os.environ.get(str(token_env))
@@ -188,11 +214,21 @@ class UpstreamMCPManager:
         try:
             response = self.client.post(url, json=payload, headers=headers)
             response.raise_for_status()
+            maximum = int(config.get("max_response_bytes", 2_000_000))
+            if len(response.content) > maximum:
+                raise UpstreamMCPError("MCP upstream response exceeds configured limit")
+            content_type = response.headers.get("content-type", "").casefold()
+            if "application/json" not in content_type:
+                raise UpstreamMCPError("MCP upstream did not return JSON")
             body = response.json()
+        except UpstreamMCPError:
+            raise
         except (httpx.HTTPError, ValueError) as exc:
             raise UpstreamMCPError("MCP upstream request failed") from exc
         if not isinstance(body, dict) or body.get("jsonrpc") != "2.0":
             raise UpstreamMCPError("MCP upstream returned invalid JSON-RPC")
+        if body.get("id") != payload.get("id"):
+            raise UpstreamMCPError("MCP upstream response id mismatch")
         return body
 
     def _server_config(self, server_id: str) -> dict[str, Any]:

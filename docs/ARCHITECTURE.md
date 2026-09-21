@@ -1,10 +1,10 @@
 # SentinelGate architecture
 
-## v0.7 control surfaces
+## v0.9 control surfaces
 
-The unauthenticated `/` route is a product-information site and never requests operational
-data. Authenticated operations live under `/console/*` and call admin-protected `/v1/*`
-routes. The API remains the authority; the browser never makes a policy decision.
+The public website can run as the separate `sentinelgate.marketing:app` process, which has no
+control-plane routes or credentials. Authenticated operations live in `sentinelgate.api:app`.
+The API remains the authority; the browser never makes a policy decision.
 
 MCP manifest inspection is both an administrative pre-connection control and an inline upstream
 gate. A clean tool definition is hashed and stored as a baseline. Configured upstream manifests
@@ -26,7 +26,8 @@ returns `succeeded`.
    classification, taint labels and injection signals.
 3. The proposed tool call enters the gateway with its provenance tokens and trace ID.
 4. SentinelGate checks token revocation, active containment, rate limits, provenance,
-   agent allowlists, scopes, schema, DLP, egress budget and recent sequence state.
+   field-specific flow policy, agent allowlists, scopes, schema, DLP, egress budget and recent
+   sequence state.
 5. The call is denied, held for exact human approval, or executed once through the
    code-owned registry.
 6. Tool output is scanned, classified, signed and linked to its parent lineage before it
@@ -81,6 +82,10 @@ Trust is also conservative: `trusted < mixed < untrusted`. A derived tool output
 the strongest classification, least-trusted source and union of all parent labels. Sink
 policies can reject specific labels or any classification above their configured maximum.
 
+Structured provenance additionally binds metadata to individual JSON leaves. Deterministic
+derivations are recomputed before signing. Because arbitrary model transformations cannot be
+proven semantically, their output receives the conservative union of every supplied input.
+
 Recent lineage is also aggregated per tenant and agent for a bounded window. This prevents an
 agent from immediately washing taint away with a new trace ID, at the cost of possible temporary
 over-taint across genuinely unrelated tasks.
@@ -107,7 +112,8 @@ after review. The gateway never changes unrelated cloud, endpoint or identity sy
 - It does not inspect OpenAI-hosted tools that bypass the application tool loop.
 - It does not claim semantic prompt-injection detection is complete.
 - It does not autonomously remediate arbitrary infrastructure.
-- It does not replace enterprise OIDC, a distributed database, KMS or a SIEM.
+- It can federate administrator authentication to OIDC but does not replace the customer's
+  identity provider, distributed database, KMS or SIEM.
 - Its MCP endpoint is not yet a full stateful Streamable HTTP/SSE and OAuth implementation.
 
 These constraints make failure modes legible and keep containment bounded.

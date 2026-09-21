@@ -63,7 +63,7 @@ def run(iterations: int) -> dict[str, object]:
         elapsed = time.perf_counter() - started
     return {
         "benchmark": "local_policy_evaluation",
-        "scope": "identity, policy, schema, DLP and SQLite reads; excludes HTTP and connectors",
+        "scope": "identity, policy, schema, DLP and local SQLite reads; excludes HTTP and connectors",
         "iterations": iterations,
         "latency_ms": {
             "p50": round(percentile(samples, 0.50), 3),

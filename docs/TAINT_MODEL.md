@@ -1,8 +1,10 @@
 # SentinelGate taint and lineage model
 
-SentinelGate tracks information flow across a whole agent trace, not only a single HTTP
-request. Each input and connector output receives signed provenance containing its tenant,
-trace, trust, classification, labels, content digest, lineage ID and parent lineage IDs.
+SentinelGate tracks information flow at both trace and JSON-pointer field level. Each input
+and connector output receives signed provenance containing its tenant, trace, trust,
+classification, labels, content digest, lineage ID, parent lineage IDs and optional leaf-field
+claims. Each field claim contains the digest of the exact value, preventing a safe claim from
+being attached to a changed outbound value.
 
 ## Monotonic propagation
 
@@ -33,6 +35,23 @@ Each tool policy may define:
 - `sensitive`: whether untrusted input is prohibited;
 - `require_provenance`: whether unsigned context is rejected.
 
+Tools may additionally define `field_policies` keyed by RFC 6901 JSON pointer. A field rule
+can require provenance, reject untrusted content, cap classification and block selected labels.
+Legacy whole-value provenance remains supported and is conservatively applied to governed
+fields during migration.
+
+## Transformations and declassification
+
+The derivation API verifies `copy`, `concat`, `template` and `substring` recipes before it
+signs the result. For arbitrary LLM output, every output leaf receives the union of all supplied
+input field taint. This intentionally avoids claiming semantic precision the gateway cannot
+prove.
+
+Declassification never lowers trust or data classification. It can remove only operator-
+allowlisted labels, requires administrator authentication, records the reviewer and reason,
+and produces a new child lineage token. Prompt-injection signals remain present even if a
+label is reviewed.
+
 The included email policy rejects `confidential` or `restricted` flows and labels such as
 `prompt_injection`, `secret`, `customer-data` and `restricted`. These values are examples;
 operators must set them for their own data handling rules.
@@ -53,5 +72,5 @@ individual task requires.
 This mechanism is deterministic information-flow control, not proof that a model understood
 content safely. It cannot protect tools called outside SentinelGate, identify every possible
 secret or prompt injection, or undo information that was already revealed before deployment.
-Trace state currently lives in SQLite and should move to a transactional shared store before
-multi-instance production use.
+The bundled persistence implementation remains SQLite and is therefore a single-instance
+design-partner store, not a multi-instance production database.
