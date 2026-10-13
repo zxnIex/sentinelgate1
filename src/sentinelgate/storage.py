@@ -1323,16 +1323,22 @@ class Store:
 
     def append_audit(self, event_type: str, payload: dict[str, Any]) -> str:
         event_id = str(uuid4())
-        created = utc_now().isoformat()
         canonical = json.dumps(
             payload, sort_keys=True, separators=(",", ":"), default=str
         )
         with self._lock, self._connect() as db:
             self._transaction_lock(db, "audit-chain")
             row = db.execute(
-                "SELECT event_hash FROM audit_events ORDER BY created_at DESC, id DESC LIMIT 1"
+                "SELECT event_hash, created_at FROM audit_events "
+                "ORDER BY created_at DESC, id DESC LIMIT 1"
             ).fetchone()
             previous = row["event_hash"] if row else "GENESIS"
+            created_at = utc_now()
+            if row:
+                prior_created_at = datetime.fromisoformat(row["created_at"])
+                if created_at <= prior_created_at:
+                    created_at = prior_created_at + timedelta(microseconds=1)
+            created = created_at.isoformat()
             message = (
                 f"{event_id}|{created}|{event_type}|{canonical}|{previous}".encode()
             )

@@ -70,8 +70,8 @@ Invoke-RestMethod -Method Post http://127.0.0.1:8000/v1/tokens/agents `
 
 _CONSOLE_TEMPLATE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SentinelGate Control Plane</title><link rel="stylesheet" href="/assets/console.css"><link rel="stylesheet" href="/assets/watch.css"><link rel="stylesheet" href="/assets/auth.css">
-<script src="/assets/console.js" defer></script></head>
+<title>SentinelGate Control Plane</title><link rel="stylesheet" href="/assets/console.css?v=0.11.0"><link rel="stylesheet" href="/assets/watch.css?v=0.11.0"><link rel="stylesheet" href="/assets/auth.css?v=0.11.0">
+<script src="/assets/console.js?v=0.11.0" defer></script></head>
 <body data-section="__SECTION__"><div class="app-shell"><aside class="sidebar"><a class="brand" href="/"><span class="brand-mark"></span><span>SentinelGate</span></a>
 <nav><div class="nav-label">GET STARTED</div><a data-page="onboarding" href="/console/onboarding"><i>01</i>Onboarding</a>
 <div class="nav-label">OPERATE</div><a data-page="overview" href="/console"><i>02</i>Overview</a><a data-page="watch" href="/console/watch"><i>03</i>Watch</a><a data-page="traces" href="/console/traces"><i>04</i>Data flows</a><a data-page="approvals" href="/console/approvals"><i>05</i>Approvals</a><a data-page="agents" href="/console/agents"><i>06</i>Agents</a><a data-page="incidents" href="/console/incidents"><i>07</i>Incidents</a>

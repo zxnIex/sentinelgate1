@@ -213,6 +213,10 @@ def test_watch_api_is_scoped_and_monitor_only(service, signer, store):
     app.dependency_overrides[get_watch_service] = lambda: watch
     try:
         client = TestClient(app)
+        watch_page = client.get("/console/watch")
+        assert watch_page.status_code == 200
+        assert 'data-section="watch"' in watch_page.text
+        assert '/assets/console.js?v=0.11.0' in watch_page.text
         issued = client.post(
             "/v1/tokens/agents",
             headers={"Authorization": "Bearer test-admin"},

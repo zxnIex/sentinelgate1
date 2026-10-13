@@ -1,11 +1,32 @@
 import hashlib
 import json
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 from sentinelgate import benchmark_suite
 from sentinelgate.postgres_backup import create_backup, restore_drill
 from sentinelgate.production_benchmark import _call, _direct_baseline, _latency_summary
+from sentinelgate.storage import Store
 from sentinelgate.telemetry import RuntimeTelemetry
+
+
+def test_audit_timestamps_follow_chain_order_when_clock_does_not_advance(
+    tmp_path, monkeypatch
+):
+    store = Store(
+        tmp_path / "audit-order.db",
+        "audit-order-signing-key",
+        "audit-order-encryption-key-long-enough",
+    )
+    fixed = datetime(2030, 1, 1, tzinfo=UTC)
+    monkeypatch.setattr("sentinelgate.storage.utc_now", lambda: fixed)
+
+    store.append_audit("first", {"index": 1})
+    store.append_audit("second", {"index": 2})
+
+    events = list(reversed(store.recent_audit()))
+    assert events[0]["created_at"] < events[1]["created_at"]
+    assert store.verify_audit_chain() is True
 
 
 def test_runtime_telemetry_exports_low_cardinality_histograms():
