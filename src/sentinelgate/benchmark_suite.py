@@ -19,7 +19,7 @@ def run(iterations: int = 2000) -> dict[str, object]:
     corpus = root / "config" / "evaluation_corpus.json"
     return {
         "generated_at": datetime.now(UTC).isoformat(),
-        "sentinelgate_version": "0.10.0",
+        "sentinelgate_version": "0.11.0",
         "environment": {
             "python": platform.python_version(),
             "platform": platform.platform(),

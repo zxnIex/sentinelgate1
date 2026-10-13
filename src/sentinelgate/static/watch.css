@@ -1,0 +1,21 @@
+.watch-layout {
+  display: grid;
+  gap: 13px;
+  margin-top: 13px;
+}
+
+.watch-code {
+  display: block;
+  color: #607b75;
+  font: 10px ui-monospace, SFMono-Regular, Consolas, monospace;
+  margin-top: 5px;
+}
+
+.watch-layout td:nth-child(3) {
+  min-width: 210px;
+}
+
+.watch-layout td:nth-child(4) {
+  max-width: 330px;
+  color: #8ca39e;
+}

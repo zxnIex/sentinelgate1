@@ -22,7 +22,7 @@ from sentinelgate.admin_identity import (
     AdminIdentityError,
     OIDCAdminVerifier,
 )
-from sentinelgate.dashboard import LANDING_HTML, console_page
+from sentinelgate.dashboard import LANDING_HTML, LEARN_HTML, console_page
 from sentinelgate.executor import ToolExecutionError, demo_registry
 from sentinelgate.github_connector import (
     GitHubAppClient,
@@ -60,6 +60,13 @@ from sentinelgate.models import (
     TokenResponse,
     ToolCallRequest,
     TraceSummary,
+    WatchEventRecord,
+    WatchEventRequest,
+    WatchFinding,
+    WatchFindingAction,
+    WatchSummary,
+    WatchTaskCreateRequest,
+    WatchTaskRecord,
     utc_now,
 )
 from sentinelgate.policy import PolicyConfigurationError, PolicyEngine
@@ -74,10 +81,11 @@ from sentinelgate.upstream_mcp import (
     UpstreamMCPManager,
     handle_upstream_mcp,
 )
+from sentinelgate.watch import WatchService, WatchTaskNotFound
 
 app = FastAPI(
     title="SentinelGate",
-    version="0.10.0",
+    version="0.11.0",
     description="Identity-aware, fail-closed security gateway for AI-agent tool calls.",
 )
 app.mount(
@@ -104,7 +112,7 @@ async def security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-    if request.url.path == "/" or request.url.path.startswith("/console"):
+    if request.url.path in {"/", "/learn"} or request.url.path.startswith("/console"):
         response.headers["Content-Security-Policy"] = (
             "default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'; "
             "connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'self'; "
@@ -151,6 +159,16 @@ def get_provenance() -> ProvenanceService:
 
 
 @lru_cache
+def get_watch_service() -> WatchService:
+    settings = get_settings()
+    return WatchService(
+        get_store(),
+        enabled=settings.watch_enabled,
+        monitor_only=settings.watch_monitor_only,
+    )
+
+
+@lru_cache
 def get_service() -> GatewayService:
     settings = get_settings()
     registry = demo_registry(settings.knowledge_path)
@@ -178,6 +196,7 @@ def get_service() -> GatewayService:
         settings.enforcement_mode,
         durable_notifications=bool(settings.approval_webhook_url),
         notification_max_attempts=settings.worker_max_attempts,
+        watch_service=get_watch_service(),
     )
 
 
@@ -1203,6 +1222,118 @@ def activity(
     return store.list_activity(limit, tenant_id, agent_id, trace_id)
 
 
+@app.post("/v1/watch/tasks", response_model=WatchTaskRecord)
+def create_watch_task(
+    request: WatchTaskCreateRequest,
+    principal: AgentPrincipal = Depends(require_agent),
+    watch: WatchService = Depends(get_watch_service),
+) -> WatchTaskRecord:
+    if "watch:write" not in principal.scopes:
+        raise HTTPException(status_code=403, detail="Missing watch:write scope")
+    try:
+        return watch.create_task(principal, request)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/v1/watch/events")
+def ingest_watch_event(
+    request: WatchEventRequest,
+    principal: AgentPrincipal = Depends(require_agent),
+    watch: WatchService = Depends(get_watch_service),
+) -> dict[str, object]:
+    if "watch:write" not in principal.scopes:
+        raise HTTPException(status_code=403, detail="Missing watch:write scope")
+    try:
+        event, findings = watch.ingest(principal, request)
+    except WatchTaskNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"event": event, "findings": findings, "monitor_only": watch.monitor_only}
+
+
+@app.get(
+    "/v1/watch/summary",
+    response_model=WatchSummary,
+    dependencies=[Depends(require_viewer)],
+)
+def watch_summary(
+    tenant_id: str | None = None,
+    store: Store = Depends(get_store),
+) -> WatchSummary:
+    return store.watch_summary(tenant_id)
+
+
+@app.get(
+    "/v1/watch/tasks",
+    response_model=list[WatchTaskRecord],
+    dependencies=[Depends(require_viewer)],
+)
+def watch_tasks(
+    limit: int = Query(default=100, ge=1, le=500),
+    tenant_id: str | None = None,
+    agent_id: str | None = None,
+    status: str | None = Query(default=None, pattern=r"^(active|completed|failed|cancelled)$"),
+    store: Store = Depends(get_store),
+) -> list[WatchTaskRecord]:
+    return store.list_watch_tasks(limit, tenant_id, agent_id, status)
+
+
+@app.get(
+    "/v1/watch/tasks/{task_id}/events",
+    response_model=list[WatchEventRecord],
+    dependencies=[Depends(require_viewer)],
+)
+def watch_task_events(
+    task_id: str,
+    limit: int = Query(default=200, ge=1, le=500),
+    tenant_id: str | None = None,
+    agent_id: str | None = None,
+    store: Store = Depends(get_store),
+) -> list[WatchEventRecord]:
+    return store.list_watch_events(task_id, tenant_id, agent_id, limit)
+
+
+@app.get(
+    "/v1/watch/findings",
+    response_model=list[WatchFinding],
+    dependencies=[Depends(require_viewer)],
+)
+def watch_findings(
+    limit: int = Query(default=100, ge=1, le=500),
+    tenant_id: str | None = None,
+    agent_id: str | None = None,
+    task_id: str | None = None,
+    status: str | None = Query(default=None, pattern=r"^(open|acknowledged|resolved)$"),
+    store: Store = Depends(get_store),
+) -> list[WatchFinding]:
+    return store.list_watch_findings(limit, tenant_id, agent_id, task_id, status)
+
+
+@app.post("/v1/watch/findings/{finding_id}/status", response_model=WatchFinding)
+def update_watch_finding(
+    finding_id: str,
+    action: WatchFindingAction,
+    store: Store = Depends(get_store),
+    identity: AdminIdentity = Depends(require_analyst),
+) -> WatchFinding:
+    reviewer = identity.email or identity.subject
+    finding = store.update_watch_finding(finding_id, action, reviewer)
+    if finding is None:
+        raise HTTPException(status_code=404, detail="Watch finding not found")
+    store.append_audit(
+        "watch_finding_status_changed",
+        {
+            "finding_id": finding_id,
+            "status": action.status,
+            "reviewer": reviewer,
+            "note": action.note,
+        },
+    )
+    return finding
+
+
 @app.get(
     "/v1/traces",
     response_model=list[TraceSummary],
@@ -1340,11 +1471,16 @@ def landing() -> str:
     return LANDING_HTML
 
 
+@app.get("/learn", response_class=HTMLResponse)
+def learn() -> str:
+    return LEARN_HTML
+
+
 @app.get("/console", response_class=HTMLResponse)
 @app.get("/console/{section}", response_class=HTMLResponse)
 def console(section: str = "overview") -> str:
     allowed = {
-        "overview", "traces", "approvals", "agents", "incidents",
+        "overview", "watch", "traces", "approvals", "agents", "incidents",
         "connectors", "mcp-security", "policy", "audit", "reports",
         "onboarding", "system", "benchmarks", "login",
     }

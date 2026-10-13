@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     worker_lease_seconds: int = 30
     worker_max_attempts: int = 8
     worker_id: str | None = None
+    watch_enabled: bool = True
+    watch_monitor_only: bool = True
     policy_path: Path = Path("./config/policies.json")
     knowledge_path: Path = Path("./knowledge")
     mcp_upstreams_path: Path = Path("./config/mcp_upstreams.json")
@@ -154,4 +156,8 @@ def get_settings() -> Settings:
             raise RuntimeError("Worker poll interval must be positive")
         if settings.worker_lease_seconds < 10 or settings.worker_max_attempts < 1:
             raise RuntimeError("Invalid durable worker configuration")
+        if settings.watch_enabled and not settings.watch_monitor_only:
+            raise RuntimeError(
+                "Watch Alpha is monitor-only; automated intervention is not production-supported"
+            )
     return settings

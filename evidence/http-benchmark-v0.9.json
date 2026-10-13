@@ -1,0 +1,255 @@
+{
+  "benchmark": "sentinelgate_end_to_end_http",
+  "base_url": "http://127.0.0.1:8765",
+  "transport": "plaintext HTTP",
+  "direct_tool_baseline": {
+    "iterations": 50,
+    "latency_ms": {
+      "p50": 0.247,
+      "p95": 0.37,
+      "p99": 0.408,
+      "mean": 0.28
+    },
+    "throughput_rps": 3565.43
+  },
+  "levels": [
+    {
+      "concurrency": 1,
+      "requests": 50,
+      "elapsed_seconds": 0.457,
+      "throughput_rps": 109.47,
+      "latency_ms": {
+        "p50": 5.191,
+        "p95": 12.983,
+        "p99": 79.853,
+        "mean": 9.084
+      },
+      "scenario_latency_ms": {
+        "safe": {
+          "p50": 5.191,
+          "p95": 8.197,
+          "p99": 8.197,
+          "mean": 8.104
+        },
+        "denied": {
+          "p50": 3.646,
+          "p95": 6.317,
+          "p99": 6.317,
+          "mean": 4.551
+        },
+        "approval": {
+          "p50": 5.656,
+          "p95": 7.353,
+          "p99": 7.353,
+          "mean": 6.125
+        },
+        "field_tainted": {
+          "p50": 4.733,
+          "p95": 5.299,
+          "p99": 5.299,
+          "mean": 4.501
+        },
+        "payload": {
+          "p50": 5.994,
+          "p95": 79.853,
+          "p99": 79.853,
+          "mean": 22.138
+        }
+      },
+      "http_statuses": {
+        "200": 50
+      },
+      "decisions": {
+        "allow": 10,
+        "deny": 30,
+        "require_approval": 10
+      },
+      "error_rate": 0.0,
+      "resources": {
+        "pid": 6,
+        "peak_rss_mb": 86.16,
+        "cpu_seconds": 0.41
+      }
+    },
+    {
+      "concurrency": 10,
+      "requests": 50,
+      "elapsed_seconds": 0.536,
+      "throughput_rps": 93.34,
+      "latency_ms": {
+        "p50": 106.296,
+        "p95": 180.777,
+        "p99": 198.124,
+        "mean": 105.055
+      },
+      "scenario_latency_ms": {
+        "safe": {
+          "p50": 107.525,
+          "p95": 144.34,
+          "p99": 144.34,
+          "mean": 104.742
+        },
+        "denied": {
+          "p50": 71.611,
+          "p95": 147.322,
+          "p99": 147.322,
+          "mean": 87.276
+        },
+        "payload": {
+          "p50": 123.169,
+          "p95": 180.777,
+          "p99": 180.777,
+          "mean": 140.574
+        },
+        "approval": {
+          "p50": 104.73,
+          "p95": 142.294,
+          "p99": 142.294,
+          "mean": 108.02
+        },
+        "field_tainted": {
+          "p50": 62.965,
+          "p95": 153.676,
+          "p99": 153.676,
+          "mean": 84.662
+        }
+      },
+      "http_statuses": {
+        "200": 50
+      },
+      "decisions": {
+        "allow": 10,
+        "deny": 30,
+        "require_approval": 10
+      },
+      "error_rate": 0.0,
+      "resources": {
+        "pid": 6,
+        "peak_rss_mb": 97.32,
+        "cpu_seconds": 0.55
+      }
+    },
+    {
+      "concurrency": 50,
+      "requests": 50,
+      "elapsed_seconds": 0.688,
+      "throughput_rps": 72.63,
+      "latency_ms": {
+        "p50": 507.408,
+        "p95": 625.95,
+        "p99": 676.89,
+        "mean": 507.54
+      },
+      "scenario_latency_ms": {
+        "safe": {
+          "p50": 450.325,
+          "p95": 526.985,
+          "p99": 526.985,
+          "mean": 448.998
+        },
+        "payload": {
+          "p50": 544.693,
+          "p95": 676.89,
+          "p99": 676.89,
+          "mean": 555.698
+        },
+        "denied": {
+          "p50": 525.69,
+          "p95": 565.101,
+          "p99": 565.101,
+          "mean": 527.067
+        },
+        "approval": {
+          "p50": 450.554,
+          "p95": 524.288,
+          "p99": 524.288,
+          "mean": 478.063
+        },
+        "field_tainted": {
+          "p50": 521.441,
+          "p95": 560.649,
+          "p99": 560.649,
+          "mean": 527.877
+        }
+      },
+      "http_statuses": {
+        "200": 50
+      },
+      "decisions": {
+        "allow": 10,
+        "deny": 30,
+        "require_approval": 10
+      },
+      "error_rate": 0.0,
+      "resources": {
+        "pid": 6,
+        "peak_rss_mb": 123.17,
+        "cpu_seconds": 0.72
+      }
+    },
+    {
+      "concurrency": 100,
+      "requests": 50,
+      "elapsed_seconds": 0.687,
+      "throughput_rps": 72.74,
+      "latency_ms": {
+        "p50": 558.406,
+        "p95": 636.179,
+        "p99": 670.576,
+        "mean": 520.075
+      },
+      "scenario_latency_ms": {
+        "denied": {
+          "p50": 572.09,
+          "p95": 589.052,
+          "p99": 589.052,
+          "mean": 515.096
+        },
+        "safe": {
+          "p50": 470.207,
+          "p95": 541.066,
+          "p99": 541.066,
+          "mean": 450.101
+        },
+        "payload": {
+          "p50": 573.638,
+          "p95": 665.474,
+          "p99": 665.474,
+          "mean": 537.263
+        },
+        "approval": {
+          "p50": 464.393,
+          "p95": 622.139,
+          "p99": 622.139,
+          "mean": 515.734
+        },
+        "field_tainted": {
+          "p50": 570.19,
+          "p95": 622.646,
+          "p99": 622.646,
+          "mean": 582.18
+        }
+      },
+      "http_statuses": {
+        "200": 50
+      },
+      "decisions": {
+        "deny": 30,
+        "allow": 10,
+        "require_approval": 10
+      },
+      "error_rate": 0.0,
+      "resources": {
+        "pid": 6,
+        "peak_rss_mb": 122.33,
+        "cpu_seconds": 0.74
+      }
+    }
+  ],
+  "total_requests": 200,
+  "limitations": [
+    "Client-observed latency includes HTTP, authentication, policy and database work but excludes connector execution because /v1/evaluate is used.",
+    "Resource figures cover --server-pid when supplied; otherwise they cover the benchmark client.",
+    "Run only against an isolated benchmark deployment: token issuance, audit events and rate limits mutate state."
+  ]
+}

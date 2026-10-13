@@ -1,6 +1,6 @@
 # SentinelGate architecture
 
-## v0.10 control surfaces
+## v0.11 control surfaces
 
 The public website can run as the separate `sentinelgate.marketing:app` process, which has no
 control-plane routes or credentials. Authenticated operations live in `sentinelgate.api:app`.
@@ -18,6 +18,18 @@ helps pilot and audit review, but is deliberately not represented as a complianc
 SentinelGate is an enforcement point, not a model-side instruction. An application must
 route every custom tool call through the gateway and execute tools only when the gateway
 returns `succeeded`.
+
+## Watch boundary
+
+SentinelGate Watch is an observational subsystem, not a second policy engine. Core decisions feed
+metadata-only call events into Watch after the decision is finalized. Runtimes may additionally
+submit explicit progress, result, token and estimated-cost events with a scoped agent identity.
+
+Watch applies fixed, reviewable thresholds to each tenant-and-agent-bound task. Findings contain a
+code, severity, confidence, evidence and recommended response. Watch has no connector registry,
+cannot execute tools and cannot create containment. An authenticated operator must independently
+invoke the existing Core containment endpoint after inspecting the evidence. A Watch failure is
+audited but cannot change a Core authorization decision or make the gateway unavailable.
 
 ## Request path
 

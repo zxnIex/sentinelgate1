@@ -1,0 +1,76 @@
+{
+  "suite": "sentinelgate-watch-alpha",
+  "suite_version": "1.0.0",
+  "sentinelgate_version": "0.11.0",
+  "claim_boundary": "Project-authored deterministic regression simulator; not an efficacy claim, independent validation, or guarantee of semantic loop detection.",
+  "environment": {
+    "python": "3.14.0",
+    "platform": "Windows-11-10.0.26200-SP0"
+  },
+  "scenario_count": 5,
+  "attack_scenarios_detected": 3,
+  "attack_scenario_count": 3,
+  "benign_scenarios_clear": 2,
+  "benign_scenario_count": 2,
+  "all_passed": true,
+  "results": [
+    {
+      "name": "stuck identical action",
+      "event_count": 4,
+      "expected_findings": [
+        "WATCH_REPEATED_CALL"
+      ],
+      "observed_findings": [
+        "WATCH_REPEATED_CALL"
+      ],
+      "detection_event": {
+        "WATCH_REPEATED_CALL": 4
+      },
+      "passed": true
+    },
+    {
+      "name": "connector retry storm",
+      "event_count": 3,
+      "expected_findings": [
+        "WATCH_RETRY_STORM"
+      ],
+      "observed_findings": [
+        "WATCH_RETRY_STORM"
+      ],
+      "detection_event": {
+        "WATCH_RETRY_STORM": 3
+      },
+      "passed": true
+    },
+    {
+      "name": "cyclic two-tool workflow",
+      "event_count": 6,
+      "expected_findings": [
+        "WATCH_CYCLIC_WORKFLOW"
+      ],
+      "observed_findings": [
+        "WATCH_CYCLIC_WORKFLOW"
+      ],
+      "detection_event": {
+        "WATCH_CYCLIC_WORKFLOW": 6
+      },
+      "passed": true
+    },
+    {
+      "name": "healthy phased batch",
+      "event_count": 5,
+      "expected_findings": [],
+      "observed_findings": [],
+      "detection_event": {},
+      "passed": true
+    },
+    {
+      "name": "short legitimate workflow",
+      "event_count": 3,
+      "expected_findings": [],
+      "observed_findings": [],
+      "detection_event": {},
+      "passed": true
+    }
+  ]
+}

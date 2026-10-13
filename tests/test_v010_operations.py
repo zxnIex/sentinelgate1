@@ -1,11 +1,32 @@
 import hashlib
 import json
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 from sentinelgate import benchmark_suite
 from sentinelgate.postgres_backup import create_backup, restore_drill
 from sentinelgate.production_benchmark import _call, _direct_baseline, _latency_summary
+from sentinelgate.storage import Store
 from sentinelgate.telemetry import RuntimeTelemetry
+
+
+def test_audit_timestamps_follow_chain_order_when_clock_does_not_advance(
+    tmp_path, monkeypatch
+):
+    store = Store(
+        tmp_path / "audit-order.db",
+        "audit-order-signing-key",
+        "audit-order-encryption-key-long-enough",
+    )
+    fixed = datetime(2030, 1, 1, tzinfo=UTC)
+    monkeypatch.setattr("sentinelgate.storage.utc_now", lambda: fixed)
+
+    store.append_audit("first", {"index": 1})
+    store.append_audit("second", {"index": 2})
+
+    events = list(reversed(store.recent_audit()))
+    assert events[0]["created_at"] < events[1]["created_at"]
+    assert store.verify_audit_chain() is True
 
 
 def test_runtime_telemetry_exports_low_cardinality_histograms():
@@ -41,7 +62,7 @@ def test_benchmark_suite_stamps_release_and_limitations(monkeypatch):
     monkeypatch.setattr(benchmark_suite, "run_adversarial", lambda _: {"cases": 100})
     monkeypatch.setattr(benchmark_suite, "run_resilience", lambda: {"passed": 4})
     result = benchmark_suite.run(5)
-    assert result["sentinelgate_version"] == "0.10.0"
+    assert result["sentinelgate_version"] == "0.11.0"
     assert result["adversarial_probes"]["cases"] == 100
     assert result["limitations"]
 

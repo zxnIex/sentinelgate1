@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from sentinelgate.dashboard import LANDING_HTML
+from sentinelgate.dashboard import LANDING_HTML, LEARN_HTML
 
 app = FastAPI(title="SentinelGate website", docs_url=None, redoc_url=None, openapi_url=None)
 app.mount(
@@ -37,3 +37,8 @@ def health() -> dict[str, str]:
 @app.get("/", response_class=HTMLResponse)
 def landing() -> str:
     return LANDING_HTML
+
+
+@app.get("/learn", response_class=HTMLResponse)
+def learn() -> str:
+    return LEARN_HTML
