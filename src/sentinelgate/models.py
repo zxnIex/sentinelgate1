@@ -167,6 +167,7 @@ class ToolCallRequest(BaseModel):
     )
     purpose: str = Field(default="", max_length=1000)
     trace_id: TraceId = Field(default_factory=lambda: str(uuid4()))
+    task_id: TraceId | None = None
     mcp_server_id: str | None = Field(
         default=None, pattern=r"^[a-zA-Z0-9_.:-]{1,128}$"
     )
@@ -333,6 +334,107 @@ class ActivityEvent(BaseModel):
     category: str
     decision: str
     created_at: datetime
+
+
+class WatchProfile(StrEnum):
+    RELAXED = "relaxed"
+    BALANCED = "balanced"
+    STRICT = "strict"
+
+
+class WatchEventType(StrEnum):
+    TOOL_CALL = "tool_call"
+    TOOL_RESULT = "tool_result"
+    PROGRESS = "progress"
+    HEARTBEAT = "heartbeat"
+    TASK_STATUS = "task_status"
+
+
+class WatchTaskCreateRequest(BaseModel):
+    task_id: TraceId = Field(default_factory=lambda: str(uuid4()))
+    description: str = Field(min_length=1, max_length=2000)
+    profile: WatchProfile = WatchProfile.BALANCED
+    expected_tools: list[str] = Field(default_factory=list, max_length=50)
+    success_criteria: list[str] = Field(default_factory=list, max_length=50)
+    max_runtime_seconds: int = Field(default=3600, ge=60, le=604800)
+    max_tool_calls: int = Field(default=250, ge=1, le=1_000_000)
+    max_cost_usd: float = Field(default=10.0, ge=0, le=1_000_000)
+
+
+class WatchTaskRecord(BaseModel):
+    task_id: TraceId
+    tenant_id: str
+    agent_id: str
+    description: str
+    profile: WatchProfile
+    expected_tools: list[str] = Field(default_factory=list)
+    success_criteria: list[str] = Field(default_factory=list)
+    max_runtime_seconds: int
+    max_tool_calls: int
+    max_cost_usd: float
+    status: str
+    event_count: int = 0
+    estimated_cost_usd: float = 0.0
+    created_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None = None
+
+
+class WatchEventRequest(BaseModel):
+    task_id: TraceId
+    event_type: WatchEventType
+    tool_name: str | None = Field(
+        default=None, pattern=r"^[a-zA-Z][a-zA-Z0-9_.:-]{0,127}$"
+    )
+    outcome: str | None = Field(default=None, max_length=128)
+    error_code: str | None = Field(default=None, max_length=128)
+    call_fingerprint: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    progress_signal: str | None = Field(default=None, max_length=256)
+    input_tokens: int = Field(default=0, ge=0, le=1_000_000_000)
+    output_tokens: int = Field(default=0, ge=0, le=1_000_000_000)
+    estimated_cost_usd: float = Field(default=0.0, ge=0, le=1_000_000)
+    duration_ms: float | None = Field(default=None, ge=0, le=86_400_000)
+
+
+class WatchEventRecord(WatchEventRequest):
+    id: str
+    tenant_id: str
+    agent_id: str
+    created_at: datetime
+
+
+class WatchFinding(BaseModel):
+    id: str
+    tenant_id: str
+    agent_id: str
+    task_id: TraceId
+    code: str
+    severity: str
+    confidence: float = Field(ge=0, le=1)
+    summary: str
+    evidence: list[str] = Field(default_factory=list)
+    recommended_action: str
+    status: str
+    occurrences: int
+    first_seen: datetime
+    last_seen: datetime
+    resolved_at: datetime | None = None
+    reviewer: str | None = None
+    note: str = ""
+
+
+class WatchFindingAction(BaseModel):
+    status: str = Field(pattern=r"^(acknowledged|resolved|open)$")
+    note: str = Field(default="", max_length=1000)
+
+
+class WatchSummary(BaseModel):
+    active_tasks: int
+    open_findings: int
+    high_risk_findings: int
+    monitored_events: int
+    estimated_cost_usd: float
+    prevented_cost_usd: float = 0.0
 
 
 class LineageRecord(BaseModel):

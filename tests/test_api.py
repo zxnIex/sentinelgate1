@@ -1,7 +1,15 @@
 from fastapi.testclient import TestClient
 
-from sentinelgate.api import app, get_provenance, get_service, get_signer, get_store
+from sentinelgate.api import (
+    app,
+    get_provenance,
+    get_service,
+    get_signer,
+    get_store,
+    get_watch_service,
+)
 from sentinelgate.settings import Settings, get_settings
+from sentinelgate.watch import WatchService
 
 
 def test_authenticated_api_flow(service, signer, store):
@@ -22,7 +30,7 @@ def test_authenticated_api_flow(service, signer, store):
     try:
         client = TestClient(app)
         health = client.get("/health").json()
-        assert health["version"] == "0.10.0"
+        assert health["version"] == "0.11.0"
         assert health["enforcement_mode"] == "enforce"
         schema = client.get("/openapi.json").json()
         schemes = schema["components"]["securitySchemes"]
@@ -187,5 +195,76 @@ def test_containment_api(service, store):
             json={"reviewer": "security@example.com", "note": "cleared"},
         )
         assert released.json() == {"released": True}
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_watch_api_is_scoped_and_monitor_only(service, signer, store):
+    settings = Settings(
+        admin_token="test-admin",
+        token_signing_key="test-token-signing-key-at-least-24",
+        audit_signing_key="test-audit-key",
+    )
+    watch = WatchService(store, monitor_only=True)
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[get_service] = lambda: service
+    app.dependency_overrides[get_store] = lambda: store
+    app.dependency_overrides[get_signer] = lambda: signer
+    app.dependency_overrides[get_watch_service] = lambda: watch
+    try:
+        client = TestClient(app)
+        issued = client.post(
+            "/v1/tokens/agents",
+            headers={"Authorization": "Bearer test-admin"},
+            json={
+                "agent_id": "research-agent",
+                "tenant_id": "tenant-1",
+                "scopes": ["watch:write"],
+                "ttl_seconds": 300,
+            },
+        )
+        token = issued.json()["access_token"]
+        agent_headers = {"Authorization": f"Bearer {token}"}
+        task = client.post(
+            "/v1/watch/tasks",
+            headers=agent_headers,
+            json={
+                "task_id": "api-watch-task",
+                "description": "Observe a bounded task",
+                "profile": "strict",
+            },
+        )
+        assert task.status_code == 200
+        findings = []
+        for _ in range(4):
+            event = client.post(
+                "/v1/watch/events",
+                headers=agent_headers,
+                json={
+                    "task_id": "api-watch-task",
+                    "event_type": "tool_call",
+                    "tool_name": "check_status",
+                    "call_fingerprint": "a" * 64,
+                    "outcome": "allow",
+                },
+            )
+            assert event.status_code == 200
+            assert event.json()["monitor_only"] is True
+            findings = event.json()["findings"]
+        assert "WATCH_REPEATED_CALL" in {item["code"] for item in findings}
+
+        admin_headers = {"Authorization": "Bearer test-admin"}
+        summary = client.get("/v1/watch/summary", headers=admin_headers)
+        assert summary.status_code == 200
+        assert summary.json()["open_findings"] >= 1
+        assert client.get("/v1/watch/tasks", headers=admin_headers).json()[0][
+            "task_id"
+        ] == "api-watch-task"
+        assert len(
+            client.get(
+                "/v1/watch/tasks/api-watch-task/events", headers=admin_headers
+            ).json()
+        ) == 4
+        assert store.list_containments() == []
     finally:
         app.dependency_overrides.clear()

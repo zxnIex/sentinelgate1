@@ -1,15 +1,30 @@
 # SentinelGate
 
-> v0.10 is a developer-preview/design-partner release, not an independently validated
+> v0.11 is a developer-preview/design-partner release, not an independently validated
 > enterprise-production claim.
 
 SentinelGate is an identity-aware, fail-closed security gateway for custom tools used by autonomous AI agents. It mediates an action before application code executes it and returns one of three outcomes: `allow`, `deny`, or `require_approval`.
 
-Version 0.10 is a tested design-partner release—not a claim of production certification. Its narrow promise is:
+Version 0.11 is a tested design-partner release—not a claim of production certification. Its narrow promise is:
 
 > Prevent unauthorized agent tool execution and unsafe information flow while preserving reviewable evidence for every decision.
 
-## What v0.10 adds
+## What v0.11 adds
+
+- **SentinelGate Watch Alpha**, an optional monitor-only layer for spotting stuck, looping,
+  retrying and budget-exceeding agent tasks without giving the detector authority to execute
+  tools or contain agents.
+- Automatic observation of mediated gateway decisions, plus a small explicit event API for
+  model/token cost, progress and connector-result telemetry.
+- Evidence-backed findings for repeated calls, retry storms, repeated denials, excessive polling,
+  cyclic workflows, no-progress windows and runtime/tool/cost budgets.
+- A Watch console with task timelines, finding acknowledgement and a separate, human-triggered
+  recommendation path into SentinelGate Core containment.
+- A versioned regression simulator that includes both problematic and healthy workflows and
+  states clearly that it is not an independent efficacy benchmark.
+- PyJWT 2.15.1, removing the vulnerable 2.14.0 lock from the prior release.
+
+The v0.10 operational improvements remain included:
 
 - Guided browser onboarding: validate the deployment, issue one scoped agent token and run both a
   safe and hostile call through the gateway.
@@ -27,6 +42,24 @@ Version 0.10 is a tested design-partner release—not a claim of production cert
 The release still does **not** provide independent validation, a completed penetration test,
 customer deployment evidence, direct cloud-KMS cryptography, full MCP Streamable HTTP/SSE/OAuth,
 or broad connector coverage. Those remain explicit gates rather than hidden marketing claims.
+
+## SentinelGate Watch Alpha
+
+Watch answers a different question from the firewall: not only “is this single action allowed?”
+but also “does this task appear stuck, cyclic or unexpectedly expensive?” Core remains the
+authorization boundary. Watch consumes metadata, emits findings and recommends review; it cannot
+execute a tool, change policy, revoke an identity or create containment by itself.
+
+Gateway calls are observed automatically. Runtimes can add explicit task, progress and cost events
+through `POST /v1/watch/tasks` and `POST /v1/watch/events` using an agent token with `watch:write`.
+Operators review `/console/watch` or the authenticated `/v1/watch/*` endpoints. See
+[`docs/WATCH.md`](docs/WATCH.md) for the contract, privacy boundary and integration example.
+
+Run the project-authored regression simulator with:
+
+```bash
+python -m sentinelgate.watch_simulator --output evidence/watch-alpha-v0.11.json
+```
 
 ## Enforcement path
 
@@ -221,6 +254,11 @@ These were in the broader idea list but do not belong in the same first product:
 They can become integrations or separate products after the enforcement gateway has real design partners.
 
 ## Quick start
+
+For the shortest evaluated path, open `/learn` after startup or follow
+[`docs/TEN_MINUTE_QUICKSTART.md`](docs/TEN_MINUTE_QUICKSTART.md). The presenter-ready demonstration
+is in [`docs/TWO_MINUTE_DEMO.md`](docs/TWO_MINUTE_DEMO.md), with the architecture overview in
+[`docs/ARCHITECTURE_OVERVIEW.md`](docs/ARCHITECTURE_OVERVIEW.md).
 
 Requires Python 3.11 or later.
 

@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.11.0
+
+- Added SentinelGate Watch Alpha, a monitor-only task-behavior layer separated from Core
+  authorization and containment authority.
+- Added automatic gateway-call observation and scoped task/event ingestion APIs.
+- Added deterministic findings for repeated calls, retry storms, repeated denials, excessive
+  polling, cyclic workflows, no-progress windows and runtime/tool/cost budget overruns.
+- Added progress boundaries so legitimate phased work does not accumulate false loop evidence.
+- Added a Watch console for task timelines, evidence, acknowledgements and human-triggered Core
+  containment recommendations.
+- Added tenant/agent binding, metadata-only records, audit events, summary metrics and database
+  migration support for Watch records.
+- Added a versioned healthy/adversarial regression simulator with explicit non-efficacy language.
+- Updated the locked PyJWT dependency from vulnerable 2.14.0 to 2.15.1.
+
+Watch Alpha does not autonomously contain an agent and is not semantic proof that a task is safe,
+stuck or malicious. Independent validation and real design-partner telemetry remain release gates.
+
+## 0.10.1
+
+- Added a public `/learn` technical tour with a clearly labelled explanatory attack-flow simulation.
+- Added a PostgreSQL-first ten-minute local evaluation path and presenter-ready two-minute demo.
+- Added a downloadable threat model and compact architecture overview.
+- Added the technical-tour assets without changing SentinelGate's product or API identity.
+- Kept security and benchmark limitations visible in the product experience.
+
 ## 0.10.0 — 2026-09-21
 
 ### Operational credibility

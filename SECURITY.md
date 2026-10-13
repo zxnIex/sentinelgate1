@@ -2,7 +2,7 @@
 
 ## Status
 
-SentinelGate 0.7 is a security-focused design-partner MVP. It has automated tests and static/dependency scanning, but it has not received an independent audit and must not be represented as certified or production-hardened.
+SentinelGate 0.11 is a security-focused design-partner release. It has automated tests and static/dependency scanning, but it has not received an independent audit and must not be represented as certified or production-hardened.
 
 ## Assets protected
 
@@ -52,6 +52,9 @@ SentinelGate 0.7 is a security-focused design-partner MVP. It has automated test
 27. Configured upstream MCP definitions are refreshed and enforced before each remote tool call.
 28. Egress quota is reserved only at the one-time execution boundary.
 29. A fresh trace identifier does not clear recent agent taint inside the configured window.
+30. Watch records are tenant-and-agent bound and do not retain raw prompts or tool arguments.
+31. Watch Alpha is monitor-only and cannot execute tools, alter policy or autonomously contain an agent.
+32. A Watch telemetry or detector failure cannot convert or block a SentinelGate Core decision.
 
 ## Attacker model
 
@@ -117,6 +120,17 @@ The MVP anticipates:
 - `monitor` and `restrict` are gateway states only; they do not alter external identity-provider or cloud permissions.
 - Releasing a `revoke` containment does not resurrect revoked credentials.
 - SentinelGate does not autonomously change arbitrary infrastructure or remediate general cyber incidents.
+
+### Watch Alpha
+
+- Watch uses deterministic behavioral signals and budgets; it does not understand task intent or
+  prove that a repeated action is malicious.
+- Automatic gateway observation stores tool names, decision outcomes and keyed call fingerprints,
+  not raw arguments. Explicit event producers are responsible for excluding sensitive data from
+  bounded progress and error-code fields.
+- A task can be stuck without crossing a configured threshold, and a legitimate repetitive task can
+  still produce a finding. Profiles must be tuned against observed workloads.
+- Findings are recommendations. They do not grant permission and cannot bypass Core policy.
 
 ## Safe deployment baseline
 

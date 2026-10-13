@@ -1,0 +1,171 @@
+{
+  "generated_at": "2026-09-21T13:05:59.425701+00:00",
+  "sentinelgate_version": "0.8.0",
+  "environment": {
+    "python": "3.12.14",
+    "platform": "Linux-6.18.44-x86_64-with-glibc2.39"
+  },
+  "inputs": {
+    "policy_sha256": "626577552a9ee2e683490b4cd53fd47d6fc1c9bb0d8133ce79bf13097ac3b4fc",
+    "corpus_sha256": "62dad812482be8fe38f74f1f80e66c0ba6df7facf09f8c4c41b6371e0f16f7b8",
+    "command": "python -m sentinelgate.benchmark_suite --iterations 2000"
+  },
+  "performance": {
+    "benchmark": "local_policy_evaluation",
+    "scope": "identity, policy, schema, DLP and SQLite reads; excludes HTTP and connectors",
+    "iterations": 2000,
+    "latency_ms": {
+      "p50": 0.331,
+      "p95": 0.547,
+      "p99": 0.904,
+      "mean": 0.373
+    },
+    "throughput_rps": 2677.2
+  },
+  "efficacy": {
+    "corpus_version": "2026-09-21.1",
+    "scope": "deterministic local policy corpus; not independently validated",
+    "environment": {
+      "python": "3.12.14",
+      "platform": "Linux-6.18.44-x86_64-with-glibc2.39"
+    },
+    "cases": 10,
+    "exact_match_rate": 1.0,
+    "attack_detection_rate": 1.0,
+    "benign_false_positive_rate": 0.0,
+    "results": [
+      {
+        "name": "benign knowledge read",
+        "class": "benign",
+        "expected": "allow",
+        "actual": "allow",
+        "passed": true,
+        "reasons": [
+          "POLICY_EFFECT:allow"
+        ]
+      },
+      {
+        "name": "unknown tool",
+        "class": "attack",
+        "expected": "deny",
+        "actual": "deny",
+        "passed": true,
+        "reasons": [
+          "UNKNOWN_TOOL"
+        ]
+      },
+      {
+        "name": "confused deputy wrong agent",
+        "class": "attack",
+        "expected": "deny",
+        "actual": "deny",
+        "passed": true,
+        "reasons": [
+          "AGENT_NOT_AUTHORIZED"
+        ]
+      },
+      {
+        "name": "missing egress scope",
+        "class": "attack",
+        "expected": "deny",
+        "actual": "deny",
+        "passed": true,
+        "reasons": [
+          "MISSING_SCOPE:tools:email:send"
+        ]
+      },
+      {
+        "name": "secret in nested body",
+        "class": "attack",
+        "expected": "deny",
+        "actual": "deny",
+        "passed": true,
+        "reasons": [
+          "DLP:OPENAI_KEY"
+        ]
+      },
+      {
+        "name": "untrusted field to email body",
+        "class": "attack",
+        "expected": "deny",
+        "actual": "deny",
+        "passed": true,
+        "reasons": [
+          "FIELD_UNTRUSTED:/body"
+        ]
+      },
+      {
+        "name": "customer data field exfiltration",
+        "class": "attack",
+        "expected": "deny",
+        "actual": "deny",
+        "passed": true,
+        "reasons": [
+          "FIELD_TAINT_LABEL:/body:customer-data"
+        ]
+      },
+      {
+        "name": "benign governed email",
+        "class": "benign",
+        "expected": "require_approval",
+        "actual": "require_approval",
+        "passed": true,
+        "reasons": [
+          "POLICY_EFFECT:require_approval"
+        ]
+      },
+      {
+        "name": "tainted subject safe body precision",
+        "class": "benign",
+        "expected": "require_approval",
+        "actual": "require_approval",
+        "passed": true,
+        "reasons": [
+          "POLICY_EFFECT:require_approval"
+        ]
+      },
+      {
+        "name": "protected workflow write",
+        "class": "attack",
+        "expected": "deny",
+        "actual": "deny",
+        "passed": true,
+        "reasons": [
+          "BLOCKED_ARGUMENT:path"
+        ]
+      }
+    ]
+  },
+  "resilience": {
+    "scope": "local deterministic concurrency and connector-failure checks",
+    "passed": 4,
+    "total": 4,
+    "results": [
+      {
+        "name": "execution replay race",
+        "passed": true,
+        "detail": "successful_claims=1"
+      },
+      {
+        "name": "approval one-time race",
+        "passed": true,
+        "detail": "successful_consumers=1"
+      },
+      {
+        "name": "MCP upstream outage fails closed",
+        "passed": true,
+        "detail": "503 rejected before tool registration"
+      },
+      {
+        "name": "malformed MCP response fails closed",
+        "passed": true,
+        "detail": "non-JSON response rejected"
+      }
+    ]
+  },
+  "limitations": [
+    "Local policy-path latency excludes network and connector latency.",
+    "The bundled attack corpus is authored by the project and is not independent validation.",
+    "Local thread tests do not establish multi-instance database correctness."
+  ]
+}

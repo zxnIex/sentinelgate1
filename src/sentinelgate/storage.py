@@ -43,6 +43,14 @@ from sentinelgate.models import (
     ToolCallRequest,
     TraceSummary,
     TrustLevel,
+    WatchEventRecord,
+    WatchEventRequest,
+    WatchFinding,
+    WatchFindingAction,
+    WatchProfile,
+    WatchSummary,
+    WatchTaskCreateRequest,
+    WatchTaskRecord,
     utc_now,
 )
 
@@ -110,6 +118,10 @@ class Store:
     @property
     def backend(self) -> str:
         return "postgresql" if self._postgres else "sqlite"
+
+    def metadata_fingerprint(self, value: str) -> str:
+        """Return a non-reversible, deployment-keyed equality fingerprint."""
+        return hmac.new(self.key, value.encode(), hashlib.sha256).hexdigest()
 
     def close(self) -> None:
         if self._pool is not None:
@@ -274,6 +286,40 @@ class Store:
                     last_seen TEXT NOT NULL, processed INTEGER NOT NULL,
                     failed INTEGER NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS watch_tasks (
+                    task_id TEXT NOT NULL, tenant_id TEXT NOT NULL, agent_id TEXT NOT NULL,
+                    description TEXT NOT NULL, profile TEXT NOT NULL,
+                    expected_tools_json TEXT NOT NULL, success_criteria_json TEXT NOT NULL,
+                    max_runtime_seconds INTEGER NOT NULL, max_tool_calls INTEGER NOT NULL,
+                    max_cost_usd REAL NOT NULL, status TEXT NOT NULL,
+                    event_count INTEGER NOT NULL, estimated_cost_usd REAL NOT NULL,
+                    created_at TEXT NOT NULL, updated_at TEXT NOT NULL, completed_at TEXT,
+                    PRIMARY KEY(tenant_id, task_id)
+                );
+                CREATE INDEX IF NOT EXISTS ix_watch_tasks_agent_status
+                    ON watch_tasks(tenant_id, agent_id, status, updated_at);
+                CREATE TABLE IF NOT EXISTS watch_events (
+                    id TEXT PRIMARY KEY, task_id TEXT NOT NULL, tenant_id TEXT NOT NULL,
+                    agent_id TEXT NOT NULL, event_type TEXT NOT NULL, tool_name TEXT,
+                    outcome TEXT, error_code TEXT, call_fingerprint TEXT,
+                    progress_signal TEXT, input_tokens INTEGER NOT NULL,
+                    output_tokens INTEGER NOT NULL, estimated_cost_usd REAL NOT NULL,
+                    duration_ms REAL, created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS ix_watch_events_task_time
+                    ON watch_events(tenant_id, task_id, created_at);
+                CREATE TABLE IF NOT EXISTS watch_findings (
+                    id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, agent_id TEXT NOT NULL,
+                    task_id TEXT NOT NULL, code TEXT NOT NULL, severity TEXT NOT NULL,
+                    confidence REAL NOT NULL, summary TEXT NOT NULL,
+                    evidence_json TEXT NOT NULL, recommended_action TEXT NOT NULL,
+                    status TEXT NOT NULL, occurrences INTEGER NOT NULL,
+                    first_seen TEXT NOT NULL, last_seen TEXT NOT NULL,
+                    resolved_at TEXT, reviewer TEXT, note TEXT NOT NULL,
+                    UNIQUE(tenant_id, task_id, code)
+                );
+                CREATE INDEX IF NOT EXISTS ix_watch_findings_status_time
+                    ON watch_findings(tenant_id, status, last_seen);
                 """
             )
             if self._postgres:
@@ -298,11 +344,380 @@ class Store:
                 "0001_initial",
                 "0002_field_taint",
                 "0003_durable_outbox",
+                "0004_watch_alpha",
             ):
                 db.execute(
                     "INSERT INTO schema_migrations VALUES (?, ?) ON CONFLICT DO NOTHING",
                     (version, utc_now().isoformat()),
                 )
+
+    def create_watch_task(
+        self,
+        principal: AgentPrincipal,
+        request: WatchTaskCreateRequest,
+        audit: bool = True,
+    ) -> WatchTaskRecord:
+        del audit  # Audit policy is owned by WatchService, not persistence.
+        now = utc_now().isoformat()
+        with self._connect() as db:
+            db.execute(
+                """INSERT INTO watch_tasks (
+                       task_id, tenant_id, agent_id, description, profile,
+                       expected_tools_json, success_criteria_json,
+                       max_runtime_seconds, max_tool_calls, max_cost_usd,
+                       status, event_count, estimated_cost_usd,
+                       created_at, updated_at, completed_at
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', 0, 0, ?, ?, NULL)
+                   ON CONFLICT(tenant_id, task_id) DO NOTHING""",
+                (
+                    request.task_id,
+                    principal.tenant_id,
+                    principal.agent_id,
+                    request.description,
+                    request.profile.value,
+                    json.dumps(sorted(set(request.expected_tools))),
+                    json.dumps(request.success_criteria),
+                    request.max_runtime_seconds,
+                    request.max_tool_calls,
+                    request.max_cost_usd,
+                    now,
+                    now,
+                ),
+            )
+            row = db.execute(
+                """SELECT * FROM watch_tasks
+                   WHERE tenant_id=? AND task_id=? AND agent_id=?""",
+                (principal.tenant_id, request.task_id, principal.agent_id),
+            ).fetchone()
+        if row is None:
+            raise ValueError("Watch task identifier is already owned by another agent")
+        return self._watch_task_from_row(row)
+
+    def get_watch_task(
+        self, task_id: str, tenant_id: str, agent_id: str | None = None
+    ) -> WatchTaskRecord | None:
+        query = "SELECT * FROM watch_tasks WHERE tenant_id=? AND task_id=?"
+        params: list[Any] = [tenant_id, task_id]
+        if agent_id:
+            query += " AND agent_id=?"
+            params.append(agent_id)
+        with self._connect() as db:
+            row = db.execute(query, tuple(params)).fetchone()
+        return self._watch_task_from_row(row) if row else None
+
+    def list_watch_tasks(
+        self,
+        limit: int = 100,
+        tenant_id: str | None = None,
+        agent_id: str | None = None,
+        status: str | None = None,
+    ) -> list[WatchTaskRecord]:
+        filters: list[str] = []
+        params: list[Any] = []
+        for column, value in (
+            ("tenant_id", tenant_id),
+            ("agent_id", agent_id),
+            ("status", status),
+        ):
+            if value:
+                filters.append(f"{column}=?")
+                params.append(value)
+        query = "SELECT * FROM watch_tasks"
+        if filters:
+            query += " WHERE " + " AND ".join(filters)
+        query += " ORDER BY updated_at DESC LIMIT ?"
+        params.append(limit)
+        with self._connect() as db:
+            rows = db.execute(query, tuple(params)).fetchall()
+        return [self._watch_task_from_row(row) for row in rows]
+
+    def record_watch_event(
+        self, principal: AgentPrincipal, request: WatchEventRequest
+    ) -> WatchEventRecord:
+        task = self.get_watch_task(
+            request.task_id, principal.tenant_id, principal.agent_id
+        )
+        if task is None:
+            raise ValueError("Watch task not found for this agent identity")
+        event = WatchEventRecord(
+            id=str(uuid4()),
+            tenant_id=principal.tenant_id,
+            agent_id=principal.agent_id,
+            created_at=utc_now(),
+            **request.model_dump(),
+        )
+        terminal = (
+            event.outcome
+            if event.event_type.value == "task_status"
+            and event.outcome in {"completed", "failed", "cancelled"}
+            else None
+        )
+        with self._connect() as db:
+            db.execute(
+                """INSERT INTO watch_events VALUES (
+                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                   )""",
+                (
+                    event.id,
+                    event.task_id,
+                    event.tenant_id,
+                    event.agent_id,
+                    event.event_type.value,
+                    event.tool_name,
+                    event.outcome,
+                    event.error_code,
+                    event.call_fingerprint,
+                    event.progress_signal,
+                    event.input_tokens,
+                    event.output_tokens,
+                    event.estimated_cost_usd,
+                    event.duration_ms,
+                    event.created_at.isoformat(),
+                ),
+            )
+            db.execute(
+                """UPDATE watch_tasks SET event_count=event_count+1,
+                       estimated_cost_usd=estimated_cost_usd+?, updated_at=?,
+                       status=COALESCE(?, status),
+                       completed_at=CASE WHEN ? IS NULL THEN completed_at ELSE ? END
+                   WHERE tenant_id=? AND agent_id=? AND task_id=?""",
+                (
+                    event.estimated_cost_usd,
+                    event.created_at.isoformat(),
+                    terminal,
+                    terminal,
+                    event.created_at.isoformat(),
+                    event.tenant_id,
+                    event.agent_id,
+                    event.task_id,
+                ),
+            )
+        return event
+
+    def list_watch_events(
+        self,
+        task_id: str,
+        tenant_id: str | None = None,
+        agent_id: str | None = None,
+        limit: int = 500,
+    ) -> list[WatchEventRecord]:
+        if tenant_id and agent_id:
+            query = (
+                "SELECT * FROM watch_events WHERE task_id=? AND tenant_id=? "
+                "AND agent_id=? ORDER BY created_at DESC, id DESC LIMIT ?"
+            )
+            params = (task_id, tenant_id, agent_id, limit)
+        elif tenant_id:
+            query = (
+                "SELECT * FROM watch_events WHERE task_id=? AND tenant_id=? "
+                "ORDER BY created_at DESC, id DESC LIMIT ?"
+            )
+            params = (task_id, tenant_id, limit)
+        elif agent_id:
+            query = (
+                "SELECT * FROM watch_events WHERE task_id=? AND agent_id=? "
+                "ORDER BY created_at DESC, id DESC LIMIT ?"
+            )
+            params = (task_id, agent_id, limit)
+        else:
+            query = (
+                "SELECT * FROM watch_events WHERE task_id=? "
+                "ORDER BY created_at DESC, id DESC LIMIT ?"
+            )
+            params = (task_id, limit)
+        with self._connect() as db:
+            rows = db.execute(query, params).fetchall()
+        return [WatchEventRecord(**dict(row)) for row in rows]
+
+    def upsert_watch_finding(self, finding: WatchFinding) -> WatchFinding:
+        now = utc_now().isoformat()
+        with self._connect() as db:
+            db.execute(
+                """INSERT INTO watch_findings VALUES (
+                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', 1, ?, ?, NULL, NULL, ''
+                   ) ON CONFLICT(id) DO UPDATE SET
+                       severity=excluded.severity,
+                       confidence=excluded.confidence,
+                       summary=excluded.summary,
+                       evidence_json=excluded.evidence_json,
+                       recommended_action=excluded.recommended_action,
+                       status='open', occurrences=watch_findings.occurrences+1,
+                       last_seen=excluded.last_seen, resolved_at=NULL""",
+                (
+                    finding.id,
+                    finding.tenant_id,
+                    finding.agent_id,
+                    finding.task_id,
+                    finding.code,
+                    finding.severity,
+                    finding.confidence,
+                    finding.summary,
+                    json.dumps(finding.evidence),
+                    finding.recommended_action,
+                    finding.first_seen.isoformat(),
+                    now,
+                ),
+            )
+            row = db.execute(
+                "SELECT * FROM watch_findings WHERE id=?", (finding.id,)
+            ).fetchone()
+        return self._watch_finding_from_row(row)
+
+    def list_watch_findings(
+        self,
+        limit: int = 100,
+        tenant_id: str | None = None,
+        agent_id: str | None = None,
+        task_id: str | None = None,
+        status: str | None = None,
+    ) -> list[WatchFinding]:
+        filters: list[str] = []
+        params: list[Any] = []
+        for column, value in (
+            ("tenant_id", tenant_id),
+            ("agent_id", agent_id),
+            ("task_id", task_id),
+            ("status", status),
+        ):
+            if value:
+                filters.append(f"{column}=?")
+                params.append(value)
+        query = "SELECT * FROM watch_findings"
+        if filters:
+            query += " WHERE " + " AND ".join(filters)
+        query += " ORDER BY last_seen DESC LIMIT ?"
+        params.append(limit)
+        with self._connect() as db:
+            rows = db.execute(query, tuple(params)).fetchall()
+        return [self._watch_finding_from_row(row) for row in rows]
+
+    def update_watch_finding(
+        self,
+        finding_id: str,
+        action: WatchFindingAction,
+        reviewer: str,
+    ) -> WatchFinding | None:
+        resolved = utc_now().isoformat() if action.status == "resolved" else None
+        with self._connect() as db:
+            cursor = db.execute(
+                """UPDATE watch_findings SET status=?, resolved_at=?, reviewer=?, note=?
+                   WHERE id=?""",
+                (action.status, resolved, reviewer, action.note, finding_id),
+            )
+            row = db.execute(
+                "SELECT * FROM watch_findings WHERE id=?", (finding_id,)
+            ).fetchone()
+        return self._watch_finding_from_row(row) if cursor.rowcount == 1 and row else None
+
+    def watch_summary(self, tenant_id: str | None = None) -> WatchSummary:
+        with self._connect() as db:
+            if tenant_id:
+                params = (tenant_id,)
+                active_tasks = self._scalar(
+                    db,
+                    "SELECT COUNT(*) FROM watch_tasks "
+                    "WHERE status='active' AND tenant_id=?",
+                    params,
+                )
+                open_findings = self._scalar(
+                    db,
+                    "SELECT COUNT(*) FROM watch_findings "
+                    "WHERE status='open' AND tenant_id=?",
+                    params,
+                )
+                high_risk_findings = self._scalar(
+                    db,
+                    "SELECT COUNT(*) FROM watch_findings WHERE status='open' "
+                    "AND severity IN ('high','critical') AND tenant_id=?",
+                    params,
+                )
+                monitored_events = self._scalar(
+                    db, "SELECT COUNT(*) FROM watch_events WHERE tenant_id=?", params
+                )
+                cost_query = (
+                    "SELECT COALESCE(SUM(estimated_cost_usd),0) AS total "
+                    "FROM watch_tasks WHERE tenant_id=?"
+                )
+            else:
+                params = ()
+                active_tasks = self._scalar(
+                    db, "SELECT COUNT(*) FROM watch_tasks WHERE status='active'"
+                )
+                open_findings = self._scalar(
+                    db, "SELECT COUNT(*) FROM watch_findings WHERE status='open'"
+                )
+                high_risk_findings = self._scalar(
+                    db,
+                    "SELECT COUNT(*) FROM watch_findings WHERE status='open' "
+                    "AND severity IN ('high','critical')",
+                )
+                monitored_events = self._scalar(
+                    db, "SELECT COUNT(*) FROM watch_events"
+                )
+                cost_query = (
+                    "SELECT COALESCE(SUM(estimated_cost_usd),0) AS total "
+                    "FROM watch_tasks"
+                )
+            return WatchSummary(
+                active_tasks=active_tasks,
+                open_findings=open_findings,
+                high_risk_findings=high_risk_findings,
+                monitored_events=monitored_events,
+                estimated_cost_usd=float(
+                    db.execute(cost_query, params).fetchone()["total"]
+                ),
+            )
+
+    @staticmethod
+    def _watch_task_from_row(row: Any) -> WatchTaskRecord:
+        return WatchTaskRecord(
+            task_id=row["task_id"],
+            tenant_id=row["tenant_id"],
+            agent_id=row["agent_id"],
+            description=row["description"],
+            profile=WatchProfile(row["profile"]),
+            expected_tools=json.loads(row["expected_tools_json"]),
+            success_criteria=json.loads(row["success_criteria_json"]),
+            max_runtime_seconds=row["max_runtime_seconds"],
+            max_tool_calls=row["max_tool_calls"],
+            max_cost_usd=row["max_cost_usd"],
+            status=row["status"],
+            event_count=row["event_count"],
+            estimated_cost_usd=row["estimated_cost_usd"],
+            created_at=datetime.fromisoformat(row["created_at"]),
+            updated_at=datetime.fromisoformat(row["updated_at"]),
+            completed_at=(
+                datetime.fromisoformat(row["completed_at"])
+                if row["completed_at"]
+                else None
+            ),
+        )
+
+    @staticmethod
+    def _watch_finding_from_row(row: Any) -> WatchFinding:
+        return WatchFinding(
+            id=row["id"],
+            tenant_id=row["tenant_id"],
+            agent_id=row["agent_id"],
+            task_id=row["task_id"],
+            code=row["code"],
+            severity=row["severity"],
+            confidence=row["confidence"],
+            summary=row["summary"],
+            evidence=json.loads(row["evidence_json"]),
+            recommended_action=row["recommended_action"],
+            status=row["status"],
+            occurrences=row["occurrences"],
+            first_seen=datetime.fromisoformat(row["first_seen"]),
+            last_seen=datetime.fromisoformat(row["last_seen"]),
+            resolved_at=(
+                datetime.fromisoformat(row["resolved_at"])
+                if row["resolved_at"]
+                else None
+            ),
+            reviewer=row["reviewer"],
+            note=row["note"],
+        )
 
     def enqueue_outbox(
         self,
@@ -1247,6 +1662,13 @@ class Store:
                 "notification_jobs_dead": self._scalar(
                     db, "SELECT COUNT(*) FROM outbox_jobs WHERE status='dead'"
                 ),
+                "watch_active_tasks": self._scalar(
+                    db, "SELECT COUNT(*) FROM watch_tasks WHERE status='active'"
+                ),
+                "watch_open_findings": self._scalar(
+                    db, "SELECT COUNT(*) FROM watch_findings WHERE status='open'"
+                ),
+                "watch_events": self._scalar(db, "SELECT COUNT(*) FROM watch_events"),
             }
 
     def recent_audit(self, limit: int = 100) -> list[dict[str, Any]]:

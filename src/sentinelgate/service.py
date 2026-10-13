@@ -1,4 +1,5 @@
 import hmac
+import time
 from datetime import datetime, timedelta
 
 from sentinelgate.executor import ToolExecutionError, ToolRegistry, ToolValidationError
@@ -27,6 +28,7 @@ from sentinelgate.provenance import ProvenanceService
 from sentinelgate.security import canonical_json, redact, request_hash, scan_secrets
 from sentinelgate.storage import StorageIntegrityError, Store
 from sentinelgate.taint import highest_classification, least_trusted
+from sentinelgate.watch import WatchService
 
 
 class GatewayService:
@@ -40,6 +42,7 @@ class GatewayService:
         approval_notifier: ApprovalNotifier | None = None,
         durable_notifications: bool = False,
         notification_max_attempts: int = 8,
+        watch_service: WatchService | None = None,
     ):
         self.policy = policy
         self.store = store
@@ -49,6 +52,7 @@ class GatewayService:
         self.approval_notifier = approval_notifier
         self.durable_notifications = durable_notifications
         self.notification_max_attempts = notification_max_attempts
+        self.watch_service = watch_service
 
     def available_tools(self, principal: AgentPrincipal) -> list[dict]:
         available = []
@@ -446,10 +450,18 @@ class GatewayService:
                     status="egress_budget_exceeded",
                     decision=decision,
                 )
+        started = time.perf_counter()
         try:
             result = self.executor.execute(call.tool_name, call.arguments)
             output_findings = scan_secrets(result.output)
             if output_findings:
+                self._observe_execution_safely(
+                    call,
+                    principal,
+                    "output_blocked",
+                    (time.perf_counter() - started) * 1000,
+                    "DLP_OUTPUT_BLOCKED",
+                )
                 self.store.finish_execution(call.request_id, "output_blocked")
                 self.store.append_audit(
                     "tool_output_blocked",
@@ -509,6 +521,12 @@ class GatewayService:
                     field_taint=attestation.field_taint,
                 )
             )
+            self._observe_execution_safely(
+                call,
+                principal,
+                "succeeded",
+                (time.perf_counter() - started) * 1000,
+            )
             return ExecutionResult(
                 request_id=call.request_id,
                 status="succeeded",
@@ -529,6 +547,13 @@ class GatewayService:
                     "request_hash": digest,
                     "error": str(exc),
                 },
+            )
+            self._observe_execution_safely(
+                call,
+                principal,
+                "failed",
+                (time.perf_counter() - started) * 1000,
+                type(exc).__name__,
             )
             return ExecutionResult(
                 request_id=call.request_id, status="failed", decision=decision
@@ -749,7 +774,7 @@ class GatewayService:
                     "quarantined": became_quarantined,
                 },
             )
-        return PolicyDecision(
+        decision = PolicyDecision(
             request_id=call.request_id,
             request_hash=digest,
             agent_id=principal.agent_id,
@@ -765,3 +790,42 @@ class GatewayService:
             enforcement_mode=self.enforcement_mode,
             enforced=self.enforcement_mode is not EnforcementMode.OBSERVE,
         )
+        if side_effects and self.watch_service is not None:
+            try:
+                self.watch_service.observe_gateway_call(call, principal, decision)
+            except Exception as exc:  # noqa: BLE001 - advisory isolation boundary
+                self.store.append_audit(
+                    "watch_observation_failed",
+                    {
+                        "request_id": call.request_id,
+                        "tenant_id": principal.tenant_id,
+                        "agent_id": principal.agent_id,
+                        "error_type": type(exc).__name__,
+                    },
+                )
+        return decision
+
+    def _observe_execution_safely(
+        self,
+        call: ToolCallRequest,
+        principal: AgentPrincipal,
+        outcome: str,
+        duration_ms: float,
+        error_code: str | None = None,
+    ) -> None:
+        if self.watch_service is None:
+            return
+        try:
+            self.watch_service.observe_execution(
+                call, principal, outcome, duration_ms, error_code
+            )
+        except Exception as exc:  # noqa: BLE001 - advisory isolation boundary
+            self.store.append_audit(
+                "watch_execution_observation_failed",
+                {
+                    "request_id": call.request_id,
+                    "tenant_id": principal.tenant_id,
+                    "agent_id": principal.agent_id,
+                    "error_type": type(exc).__name__,
+                },
+            )
