@@ -22,7 +22,9 @@ class RecordingConnection:
 def test_postgres_adapter_converts_placeholders_and_scripts():
     raw = RecordingConnection()
     connection = _PostgresConnection(raw)
-    connection.execute("SELECT * FROM agents WHERE tenant_id=? AND agent_id=?", ("t", "a"))
+    connection.execute(
+        "SELECT * FROM agents WHERE tenant_id=? AND agent_id=?", ("t", "a")
+    )
     connection.executescript("CREATE TABLE one (id TEXT); CREATE TABLE two (id TEXT);")
     assert raw.calls[0][0].count("%s") == 2
     assert len(raw.calls) == 3
@@ -66,7 +68,10 @@ def test_adversarial_corpus_expands_to_one_hundred_cases():
     assert report["cases"] == 100
     assert report["attack_cases"] == 80
     assert report["benign_cases"] == 20
-    assert report["scope"] == "project-authored adversarial probes; not independent validation"
+    assert (
+        report["scope"]
+        == "project-authored adversarial probes; not independent validation"
+    )
     assert isinstance(report["misses"], list)
 
 
@@ -92,6 +97,8 @@ def test_client_sends_field_provenance():
 
 
 def test_compose_defines_postgres_service():
-    compose = (Path(__file__).resolve().parents[1] / "compose.yaml").read_text(encoding="utf-8")
+    compose = (Path(__file__).resolve().parents[1] / "compose.yaml").read_text(
+        encoding="utf-8"
+    )
     assert "postgres:17-alpine" in compose
     assert "SENTINEL_DATABASE_URL" in compose

@@ -1,7 +1,7 @@
 # SentinelGate threat model
 
-Version: 0.11.0  
-Status: design-partner release; project-authored, not independently validated
+Version: 0.17.0  
+Status: design-partner and SaaS-boundary preview; project-authored, not independently validated
 
 ## Security objective
 
@@ -47,6 +47,9 @@ Calls made directly to a tool, with credentials unavailable to SentinelGate, are
 | Notification loss | transactional outbox, leases, retries, dead-letter state | external destination outage may delay review |
 | Database races | transactions, locks and PostgreSQL integration races | managed failover and extreme-load behaviour require deployment testing |
 | SSRF and hostile upstreams | configured upstream allowlists and bounded responses | full MCP discovery/OAuth is not yet implemented |
+| Billing entitlement forgery | hosted checkout, signed timestamped webhooks, server-side catalogue, event idempotency | exact concurrent usage accounting is not yet a financial ledger |
+| LLM analysis error or injection | metadata-only input, strict schema, evidence-ID validation, advisory-only authority | semantic false positives and false negatives remain possible |
+| Unsafe automatic response | disabled by default, deterministic-only named policies, task-pause-only action, approved recovery | an incorrect enabled policy can still interrupt a legitimate task |
 
 ## Explicit non-goals
 
@@ -74,6 +77,8 @@ Calls made directly to a tool, with credentials unavailable to SentinelGate, are
 - no independent penetration test or production customer evidence;
 - no direct cloud-KMS envelope encryption;
 - managed database failover has not been certified by this repository.
+- shared public-SaaS tenant isolation has not completed exhaustive route-level authorization testing;
+- pricing and willingness to pay have not been validated with customers.
 
 ## Validation priorities
 

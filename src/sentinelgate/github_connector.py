@@ -36,8 +36,14 @@ def _validated_path(value: str) -> str:
     if value.startswith(("/", "\\")) or any(part in {"", ".", ".."} for part in parts):
         raise ValueError("GitHub path must be a normalized repository-relative path")
     basename = parts[-1].casefold()
-    if basename == ".env" or basename.startswith(".env.") or basename.endswith((".pem", ".key")):
-        raise ValueError("Secret-bearing file paths are not accessible by this connector")
+    if (
+        basename == ".env"
+        or basename.startswith(".env.")
+        or basename.endswith((".pem", ".key"))
+    ):
+        raise ValueError(
+            "Secret-bearing file paths are not accessible by this connector"
+        )
     return value
 
 
@@ -153,7 +159,9 @@ class GitHubAppClient:
             follow_redirects=False,
             trust_env=False,
         )
-        self._tokens: dict[tuple[str, tuple[tuple[str, str], ...]], tuple[str, Any]] = {}
+        self._tokens: dict[
+            tuple[str, tuple[tuple[str, str], ...]], tuple[str, Any]
+        ] = {}
         self._lock = Lock()
 
     @property
@@ -166,7 +174,10 @@ class GitHubAppClient:
         full_name = min(self.allowed_repositories)
         owner, repo = full_name.split("/", 1)
         payload = self.request(
-            "GET", f"/repos/{owner}/{repo}", owner=owner, repo=repo,
+            "GET",
+            f"/repos/{owner}/{repo}",
+            owner=owner,
+            repo=repo,
             permissions={"contents": "read"},
         )
         if not isinstance(payload, dict) or not payload.get("full_name"):
@@ -221,9 +232,7 @@ class GitHubAppClient:
         if not self.configured:
             raise ToolExecutionError("GitHub App connector is not configured")
 
-    def _installation_token(
-        self, repo: str, permissions: dict[str, str]
-    ) -> str:
+    def _installation_token(self, repo: str, permissions: dict[str, str]) -> str:
         key = (repo.casefold(), tuple(sorted(permissions.items())))
         with self._lock:
             cached = self._tokens.get(key)
@@ -237,7 +246,9 @@ class GitHubAppClient:
                     json={"repositories": [repo], "permissions": permissions},
                 )
             except httpx.HTTPError as exc:
-                raise ToolExecutionError("Could not mint GitHub installation token") from exc
+                raise ToolExecutionError(
+                    "Could not mint GitHub installation token"
+                ) from exc
             if response.status_code >= 400:
                 raise ToolExecutionError(
                     f"GitHub installation token request returned {response.status_code}"
@@ -250,7 +261,9 @@ class GitHubAppClient:
 
                 expiry = datetime.fromisoformat(expires_at)
             except (KeyError, TypeError, ValueError) as exc:
-                raise ToolExecutionError("GitHub returned a malformed installation token") from exc
+                raise ToolExecutionError(
+                    "GitHub returned a malformed installation token"
+                ) from exc
             self._tokens[key] = (token, expiry)
             return token
 
@@ -282,9 +295,7 @@ class GitHubAppClient:
 
     @classmethod
     def _b64(cls, value: dict[str, Any]) -> str:
-        return cls._b64_bytes(
-            json.dumps(value, separators=(",", ":")).encode("utf-8")
-        )
+        return cls._b64_bytes(json.dumps(value, separators=(",", ":")).encode("utf-8"))
 
     @staticmethod
     def _b64_bytes(value: bytes) -> str:
@@ -335,7 +346,9 @@ class GitHubConnector:
             encoded = "".join(str(item.get("content", "")).split())
             raw = base64.b64decode(encoded, validate=True)
             if len(raw) > 256_000:
-                raise ToolExecutionError("GitHub file exceeds the 256 KB connector limit")
+                raise ToolExecutionError(
+                    "GitHub file exceeds the 256 KB connector limit"
+                )
             content = raw.decode("utf-8")
         except (ValueError, UnicodeDecodeError) as exc:
             raise ToolExecutionError("GitHub file is not supported UTF-8 text") from exc
@@ -377,7 +390,7 @@ class GitHubConnector:
             repo=args["repo"],
             permissions={"contents": "read"},
         )
-        sha = ((ref.get("object") or {}).get("sha"))
+        sha = (ref.get("object") or {}).get("sha")
         if not sha:
             raise ToolExecutionError("GitHub source branch did not return a commit SHA")
         created = self.client.request(
@@ -449,7 +462,9 @@ class GitHubConnector:
             },
             classification=DataClassification.INTERNAL,
             labels=frozenset({"github", "write", "source-code"}),
-            sources=(f"github:{args['owner']}/{args['repo']}:{args['branch']}:{args['path']}",),
+            sources=(
+                f"github:{args['owner']}/{args['repo']}:{args['branch']}:{args['path']}",
+            ),
         )
 
 

@@ -1,4 +1,5 @@
 .env
+.sentinelgate/
 .env.*
 !.env.example
 .venv/

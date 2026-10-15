@@ -7,6 +7,7 @@ from sentinelgate.models import EnforcementMode
 
 
 class Settings(BaseSettings):
+    product_name: str = "SentinelGate"
     database_path: Path = Path("./data/sentinelgate.db")
     database_url: str | None = None
     database_pool_min_size: int = 1
@@ -17,6 +18,10 @@ class Settings(BaseSettings):
     worker_id: str | None = None
     watch_enabled: bool = True
     watch_monitor_only: bool = True
+    watch_intelligence_enabled: bool = False
+    watch_intelligence_model: str | None = None
+    watch_intelligence_allow_description: bool = False
+    watch_auto_response_enabled: bool = False
     policy_path: Path = Path("./config/policies.json")
     knowledge_path: Path = Path("./knowledge")
     mcp_upstreams_path: Path = Path("./config/mcp_upstreams.json")
@@ -38,6 +43,21 @@ class Settings(BaseSettings):
     data_encryption_key_file: Path | None = None
     admin_token: str = "development-admin-token"
     admin_token_file: Path | None = None
+    billing_mode: str = "disabled"
+    deployment_mode: str = "dedicated"
+    self_service_signup_enabled: bool = False
+    terms_version: str = "draft-2026-10"
+    privacy_version: str = "draft-2026-10"
+    operator_session_hours: int = 8
+    tenant_deletion_grace_days: int = 30
+    stripe_secret_key: str | None = None
+    stripe_secret_key_file: Path | None = None
+    stripe_webhook_secret: str | None = None
+    stripe_webhook_secret_file: Path | None = None
+    stripe_price_gate: str | None = None
+    stripe_price_watch: str | None = None
+    stripe_price_watch_plus: str | None = None
+    stripe_price_extra_agent: str | None = None
     environment: str = "development"
     issuer: str = "https://sentinelgate.local"
     openai_api_key: str | None = None
@@ -74,6 +94,8 @@ def get_settings() -> Settings:
         "admin_token": settings.admin_token_file,
         "approval_webhook_secret": settings.approval_webhook_secret_file,
         "oidc_client_secret": settings.oidc_client_secret_file,
+        "stripe_secret_key": settings.stripe_secret_key_file,
+        "stripe_webhook_secret": settings.stripe_webhook_secret_file,
     }
     resolved: dict[str, str] = {}
     for field, path in file_secrets.items():
@@ -81,12 +103,36 @@ def get_settings() -> Settings:
             try:
                 value = path.read_text(encoding="utf-8").strip()
             except OSError as exc:
-                raise RuntimeError(f"Unable to read configured secret file for {field}") from exc
+                raise RuntimeError(
+                    f"Unable to read configured secret file for {field}"
+                ) from exc
             if not value:
                 raise RuntimeError(f"Configured secret file for {field} is empty")
             resolved[field] = value
     if resolved:
         settings = settings.model_copy(update=resolved)
+    if settings.billing_mode not in {"disabled", "test", "live"}:
+        raise RuntimeError("SENTINEL_BILLING_MODE must be disabled, test, or live")
+    if not 2 <= len(settings.product_name.strip()) <= 64:
+        raise RuntimeError("SENTINEL_PRODUCT_NAME must contain 2 to 64 characters")
+    if settings.deployment_mode not in {"dedicated", "shared"}:
+        raise RuntimeError("SENTINEL_DEPLOYMENT_MODE must be dedicated or shared")
+    if settings.billing_mode != "disabled" and not all(
+        (
+            settings.stripe_secret_key,
+            settings.stripe_webhook_secret,
+            settings.stripe_price_gate,
+            settings.stripe_price_watch,
+            settings.stripe_price_watch_plus,
+        )
+    ):
+        raise RuntimeError("Stripe billing configuration is incomplete")
+    if settings.watch_intelligence_enabled and not settings.openai_api_key:
+        raise RuntimeError("Watch Intelligence requires SENTINEL_OPENAI_API_KEY")
+    if not settings.watch_monitor_only and not settings.watch_auto_response_enabled:
+        raise RuntimeError(
+            "Non-monitor Watch requires explicit SENTINEL_WATCH_AUTO_RESPONSE_ENABLED"
+        )
     if settings.environment.casefold() == "production":
         configured = [
             settings.audit_signing_key,
@@ -110,6 +156,25 @@ def get_settings() -> Settings:
             raise RuntimeError("Production approval webhook requires a strong secret")
         if settings.admin_auth_mode not in {"oidc", "hybrid"}:
             raise RuntimeError("Production requires OIDC administrator authentication")
+        if settings.deployment_mode == "shared" and settings.admin_auth_mode != "oidc":
+            raise RuntimeError("Shared SaaS requires OIDC-only operator authentication")
+        if settings.deployment_mode == "shared" and settings.billing_mode == "disabled":
+            raise RuntimeError("Shared SaaS requires test or live billing entitlements")
+        if settings.operator_session_hours < 1 or settings.operator_session_hours > 24:
+            raise RuntimeError(
+                "Operator session lifetime must be between 1 and 24 hours"
+            )
+        if settings.tenant_deletion_grace_days < 7:
+            raise RuntimeError(
+                "Tenant deletion grace period must be at least seven days"
+            )
+        if settings.deployment_mode == "shared" and (
+            settings.terms_version.startswith("draft-")
+            or settings.privacy_version.startswith("draft-")
+        ):
+            raise RuntimeError(
+                "Shared SaaS requires approved non-draft terms and privacy versions"
+            )
         if not all(
             (settings.oidc_issuer, settings.oidc_audience, settings.oidc_jwks_url)
         ):
@@ -142,7 +207,10 @@ def get_settings() -> Settings:
             raise RuntimeError(
                 "Production GitHub App configuration and repository allowlist must be complete"
             )
-        if settings.github_private_key_path and not settings.github_private_key_path.is_file():
+        if (
+            settings.github_private_key_path
+            and not settings.github_private_key_path.is_file()
+        ):
             raise RuntimeError("Production GitHub App private key file does not exist")
         if not settings.database_url or not settings.database_url.startswith(
             ("postgresql://", "postgresql+psycopg://")
@@ -156,8 +224,14 @@ def get_settings() -> Settings:
             raise RuntimeError("Worker poll interval must be positive")
         if settings.worker_lease_seconds < 10 or settings.worker_max_attempts < 1:
             raise RuntimeError("Invalid durable worker configuration")
-        if settings.watch_enabled and not settings.watch_monitor_only:
-            raise RuntimeError(
-                "Watch Alpha is monitor-only; automated intervention is not production-supported"
-            )
+        if (
+            settings.billing_mode == "live"
+            and not settings.stripe_secret_key.startswith("sk_live_")
+        ):
+            raise RuntimeError("Live billing requires a Stripe live secret key")
+        if (
+            settings.billing_mode == "test"
+            and not settings.stripe_secret_key.startswith("sk_test_")
+        ):
+            raise RuntimeError("Test billing requires a Stripe test secret key")
     return settings

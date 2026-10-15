@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinelgate.dev/schemas/watch-event-v1.schema.json",
+  "title": "SentinelGate Watch Event 1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["task_id", "event_type"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "task_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "session_id": {"type": ["string", "null"], "minLength": 1, "maxLength": 128},
+    "event_type": {"enum": ["tool_call", "tool_result", "progress", "heartbeat", "task_status"]},
+    "tool_name": {"type": ["string", "null"], "maxLength": 128},
+    "outcome": {"type": ["string", "null"], "maxLength": 128},
+    "error_code": {"type": ["string", "null"], "maxLength": 128},
+    "call_fingerprint": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+    "progress_signal": {"type": ["string", "null"], "maxLength": 256},
+    "milestone_id": {"type": ["string", "null"], "maxLength": 128},
+    "input_tokens": {"type": "integer", "minimum": 0},
+    "output_tokens": {"type": "integer", "minimum": 0},
+    "estimated_cost_usd": {"type": "number", "minimum": 0},
+    "duration_ms": {"type": ["number", "null"], "minimum": 0}
+  }
+}

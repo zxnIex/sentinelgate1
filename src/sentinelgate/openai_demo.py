@@ -87,7 +87,9 @@ def run() -> None:
             tools=TOOLS,
             parallel_tool_calls=False,
             store=False,
-            safety_identifier=hashlib.sha256(b"sentinelgate-demo-user").hexdigest()[:32],
+            safety_identifier=hashlib.sha256(b"sentinelgate-demo-user").hexdigest()[
+                :32
+            ],
         )
         history.extend(response.output)
         calls = [item for item in response.output if item.type == "function_call"]
@@ -134,7 +136,9 @@ def _raise_gateway_error(response: httpx.Response) -> None:
             detail = response.json().get("detail", response.text)
         except ValueError:
             detail = response.text
-        raise SystemExit(f"SentinelGate rejected the request ({response.status_code}): {detail}")
+        raise SystemExit(
+            f"SentinelGate rejected the request ({response.status_code}): {detail}"
+        )
 
 
 if __name__ == "__main__":

@@ -1,0 +1,2443 @@
+{
+  "suite": "sentinelgate-watch-foundation",
+  "suite_version": "1.1.0",
+  "sentinelgate_version": "0.17.0",
+  "claim_boundary": "Project-authored scripted-agent evaluation. The held-out partition is excluded from threshold tuning but is not externally selected or validated.",
+  "counterfactual_model": "Projected avoidable waste equals scheduled per-step cost after the first finding, assuming an immediate task pause. Observed waste is the cost the monitor-only run actually incurred after that finding.",
+  "environment": {
+    "python": "3.14.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "commit": "unavailable"
+  },
+  "reproducibility": {
+    "command": "python -m sentinelgate.watch_evaluation --output evidence/watch-foundation-v0.15.json",
+    "policy_sha256": "626577552a9ee2e683490b4cd53fd47d6fc1c9bb0d8133ce79bf13097ac3b4fc",
+    "corpus_sha256": "8c20a15b674919d9f47ebfd40c0db7c812d61f83eaa18b29c0cd977eb5198413",
+    "workflow_families": [
+      "activity_after_completion",
+      "bounded_status_polling",
+      "changing_argument_cycle",
+      "completion_without_milestones",
+      "connector_retry_storm",
+      "declared_multi_session_task",
+      "identical_retry_loop",
+      "intermittent_connector_failure",
+      "late_but_valid_progress",
+      "legitimate_pagination",
+      "phased_long_running_task",
+      "reported_cost_overrun",
+      "reported_cost_within_budget",
+      "short_task_without_progress_api",
+      "undeclared_tool",
+      "unexpected_second_session"
+    ]
+  },
+  "workflow_count": 120,
+  "partitions": {
+    "development": {
+      "count": 90,
+      "confusion_matrix": {
+        "tp": 48,
+        "fp": 0,
+        "tn": 42,
+        "fn": 0
+      },
+      "precision": 1.0,
+      "recall": 1.0,
+      "false_positive_rate": 0.0,
+      "mean_detection_delay_events": 1.125,
+      "observed_waste_after_detection_usd": 0.048,
+      "projected_avoidable_waste_usd": 0.048
+    },
+    "held_out": {
+      "count": 30,
+      "confusion_matrix": {
+        "tp": 16,
+        "fp": 0,
+        "tn": 14,
+        "fn": 0
+      },
+      "precision": 1.0,
+      "recall": 1.0,
+      "false_positive_rate": 0.0,
+      "mean_detection_delay_events": 1.125,
+      "observed_waste_after_detection_usd": 0.016,
+      "projected_avoidable_waste_usd": 0.016
+    },
+    "external": {
+      "count": 0,
+      "status": "awaiting_external_selection_and_validation",
+      "results": []
+    },
+    "combined": {
+      "count": 120,
+      "confusion_matrix": {
+        "tp": 64,
+        "fp": 0,
+        "tn": 56,
+        "fn": 0
+      },
+      "precision": 1.0,
+      "recall": 1.0,
+      "false_positive_rate": 0.0,
+      "mean_detection_delay_events": 1.125,
+      "observed_waste_after_detection_usd": 0.064,
+      "projected_avoidable_waste_usd": 0.064
+    }
+  },
+  "failures": [],
+  "results": [
+    {
+      "name": "identical_retry_loop-000",
+      "kind": "identical_retry_loop",
+      "partition": "held_out",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_REPEATED_CALL"
+      ],
+      "observed_codes": [
+        "WATCH_REPEATED_CALL"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 6,
+      "detection_event": 4,
+      "detection_delay_events": 3,
+      "observed_waste_after_detection_usd": 0.002,
+      "projected_avoidable_waste_usd": 0.002,
+      "passed": true
+    },
+    {
+      "name": "connector_retry_storm-001",
+      "kind": "connector_retry_storm",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_RETRY_STORM"
+      ],
+      "observed_codes": [
+        "WATCH_RETRY_STORM"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 5,
+      "detection_event": 3,
+      "detection_delay_events": 2,
+      "observed_waste_after_detection_usd": 0.002,
+      "projected_avoidable_waste_usd": 0.002,
+      "passed": true
+    },
+    {
+      "name": "changing_argument_cycle-002",
+      "kind": "changing_argument_cycle",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_NEAR_CYCLIC_WORKFLOW"
+      ],
+      "observed_codes": [
+        "WATCH_NEAR_CYCLIC_WORKFLOW",
+        "WATCH_REPEATED_DENIAL",
+        "WATCH_RETRY_STORM",
+        "WATCH_UNEXPECTED_TOOL"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [
+        "WATCH_REPEATED_DENIAL",
+        "WATCH_RETRY_STORM",
+        "WATCH_UNEXPECTED_TOOL"
+      ],
+      "event_count": 6,
+      "detection_event": 2,
+      "detection_delay_events": 1,
+      "observed_waste_after_detection_usd": 0.004,
+      "projected_avoidable_waste_usd": 0.004,
+      "passed": true
+    },
+    {
+      "name": "undeclared_tool-003",
+      "kind": "undeclared_tool",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_UNEXPECTED_TOOL"
+      ],
+      "observed_codes": [
+        "WATCH_UNEXPECTED_TOOL"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 1,
+      "detection_event": 1,
+      "detection_delay_events": 0,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "unexpected_second_session-004",
+      "kind": "unexpected_second_session",
+      "partition": "held_out",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_UNEXPECTED_MULTI_SESSION"
+      ],
+      "observed_codes": [
+        "WATCH_UNEXPECTED_MULTI_SESSION"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 2,
+      "detection_event": 2,
+      "detection_delay_events": 1,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "reported_cost_overrun-005",
+      "kind": "reported_cost_overrun",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_COST_BUDGET_EXCEEDED"
+      ],
+      "observed_codes": [
+        "WATCH_COST_BUDGET_EXCEEDED"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 1,
+      "detection_event": 1,
+      "detection_delay_events": 0,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "activity_after_completion-006",
+      "kind": "activity_after_completion",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_ACTIVITY_AFTER_COMPLETION"
+      ],
+      "observed_codes": [
+        "WATCH_ACTIVITY_AFTER_COMPLETION"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 2,
+      "detection_event": 2,
+      "detection_delay_events": 1,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "completion_without_milestones-007",
+      "kind": "completion_without_milestones",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_MISSING_SUCCESS_CRITERIA"
+      ],
+      "observed_codes": [
+        "WATCH_MISSING_SUCCESS_CRITERIA"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 2,
+      "detection_event": 2,
+      "detection_delay_events": 1,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "legitimate_pagination-008",
+      "kind": "legitimate_pagination",
+      "partition": "held_out",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 8,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "phased_long_running_task-009",
+      "kind": "phased_long_running_task",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 6,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "intermittent_connector_failure-010",
+      "kind": "intermittent_connector_failure",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 5,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "bounded_status_polling-011",
+      "kind": "bounded_status_polling",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 7,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "late_but_valid_progress-012",
+      "kind": "late_but_valid_progress",
+      "partition": "held_out",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 8,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "short_task_without_progress_api-013",
+      "kind": "short_task_without_progress_api",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 3,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "declared_multi_session_task-014",
+      "kind": "declared_multi_session_task",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 2,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "reported_cost_within_budget-015",
+      "kind": "reported_cost_within_budget",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 1,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "identical_retry_loop-016",
+      "kind": "identical_retry_loop",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_REPEATED_CALL"
+      ],
+      "observed_codes": [
+        "WATCH_REPEATED_CALL"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 6,
+      "detection_event": 4,
+      "detection_delay_events": 3,
+      "observed_waste_after_detection_usd": 0.002,
+      "projected_avoidable_waste_usd": 0.002,
+      "passed": true
+    },
+    {
+      "name": "connector_retry_storm-017",
+      "kind": "connector_retry_storm",
+      "partition": "held_out",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_RETRY_STORM"
+      ],
+      "observed_codes": [
+        "WATCH_RETRY_STORM"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 5,
+      "detection_event": 3,
+      "detection_delay_events": 2,
+      "observed_waste_after_detection_usd": 0.002,
+      "projected_avoidable_waste_usd": 0.002,
+      "passed": true
+    },
+    {
+      "name": "changing_argument_cycle-018",
+      "kind": "changing_argument_cycle",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_NEAR_CYCLIC_WORKFLOW"
+      ],
+      "observed_codes": [
+        "WATCH_NEAR_CYCLIC_WORKFLOW",
+        "WATCH_REPEATED_DENIAL",
+        "WATCH_RETRY_STORM",
+        "WATCH_UNEXPECTED_TOOL"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [
+        "WATCH_REPEATED_DENIAL",
+        "WATCH_RETRY_STORM",
+        "WATCH_UNEXPECTED_TOOL"
+      ],
+      "event_count": 6,
+      "detection_event": 2,
+      "detection_delay_events": 1,
+      "observed_waste_after_detection_usd": 0.004,
+      "projected_avoidable_waste_usd": 0.004,
+      "passed": true
+    },
+    {
+      "name": "undeclared_tool-019",
+      "kind": "undeclared_tool",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_UNEXPECTED_TOOL"
+      ],
+      "observed_codes": [
+        "WATCH_UNEXPECTED_TOOL"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 1,
+      "detection_event": 1,
+      "detection_delay_events": 0,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "unexpected_second_session-020",
+      "kind": "unexpected_second_session",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_UNEXPECTED_MULTI_SESSION"
+      ],
+      "observed_codes": [
+        "WATCH_UNEXPECTED_MULTI_SESSION"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 2,
+      "detection_event": 2,
+      "detection_delay_events": 1,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "reported_cost_overrun-021",
+      "kind": "reported_cost_overrun",
+      "partition": "held_out",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_COST_BUDGET_EXCEEDED"
+      ],
+      "observed_codes": [
+        "WATCH_COST_BUDGET_EXCEEDED"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 1,
+      "detection_event": 1,
+      "detection_delay_events": 0,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "activity_after_completion-022",
+      "kind": "activity_after_completion",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_ACTIVITY_AFTER_COMPLETION"
+      ],
+      "observed_codes": [
+        "WATCH_ACTIVITY_AFTER_COMPLETION"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 2,
+      "detection_event": 2,
+      "detection_delay_events": 1,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "completion_without_milestones-023",
+      "kind": "completion_without_milestones",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_MISSING_SUCCESS_CRITERIA"
+      ],
+      "observed_codes": [
+        "WATCH_MISSING_SUCCESS_CRITERIA"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 2,
+      "detection_event": 2,
+      "detection_delay_events": 1,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "legitimate_pagination-024",
+      "kind": "legitimate_pagination",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 8,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "phased_long_running_task-025",
+      "kind": "phased_long_running_task",
+      "partition": "held_out",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 6,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "intermittent_connector_failure-026",
+      "kind": "intermittent_connector_failure",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 5,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "bounded_status_polling-027",
+      "kind": "bounded_status_polling",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 7,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "late_but_valid_progress-028",
+      "kind": "late_but_valid_progress",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 8,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "short_task_without_progress_api-029",
+      "kind": "short_task_without_progress_api",
+      "partition": "held_out",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 3,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "declared_multi_session_task-030",
+      "kind": "declared_multi_session_task",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 2,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "reported_cost_within_budget-031",
+      "kind": "reported_cost_within_budget",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 1,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "identical_retry_loop-032",
+      "kind": "identical_retry_loop",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_REPEATED_CALL"
+      ],
+      "observed_codes": [
+        "WATCH_REPEATED_CALL"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 6,
+      "detection_event": 4,
+      "detection_delay_events": 3,
+      "observed_waste_after_detection_usd": 0.002,
+      "projected_avoidable_waste_usd": 0.002,
+      "passed": true
+    },
+    {
+      "name": "connector_retry_storm-033",
+      "kind": "connector_retry_storm",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_RETRY_STORM"
+      ],
+      "observed_codes": [
+        "WATCH_RETRY_STORM"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 5,
+      "detection_event": 3,
+      "detection_delay_events": 2,
+      "observed_waste_after_detection_usd": 0.002,
+      "projected_avoidable_waste_usd": 0.002,
+      "passed": true
+    },
+    {
+      "name": "changing_argument_cycle-034",
+      "kind": "changing_argument_cycle",
+      "partition": "held_out",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_NEAR_CYCLIC_WORKFLOW"
+      ],
+      "observed_codes": [
+        "WATCH_NEAR_CYCLIC_WORKFLOW",
+        "WATCH_REPEATED_DENIAL",
+        "WATCH_RETRY_STORM",
+        "WATCH_UNEXPECTED_TOOL"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [
+        "WATCH_REPEATED_DENIAL",
+        "WATCH_RETRY_STORM",
+        "WATCH_UNEXPECTED_TOOL"
+      ],
+      "event_count": 6,
+      "detection_event": 2,
+      "detection_delay_events": 1,
+      "observed_waste_after_detection_usd": 0.004,
+      "projected_avoidable_waste_usd": 0.004,
+      "passed": true
+    },
+    {
+      "name": "undeclared_tool-035",
+      "kind": "undeclared_tool",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_UNEXPECTED_TOOL"
+      ],
+      "observed_codes": [
+        "WATCH_UNEXPECTED_TOOL"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 1,
+      "detection_event": 1,
+      "detection_delay_events": 0,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "unexpected_second_session-036",
+      "kind": "unexpected_second_session",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_UNEXPECTED_MULTI_SESSION"
+      ],
+      "observed_codes": [
+        "WATCH_UNEXPECTED_MULTI_SESSION"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 2,
+      "detection_event": 2,
+      "detection_delay_events": 1,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "reported_cost_overrun-037",
+      "kind": "reported_cost_overrun",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_COST_BUDGET_EXCEEDED"
+      ],
+      "observed_codes": [
+        "WATCH_COST_BUDGET_EXCEEDED"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 1,
+      "detection_event": 1,
+      "detection_delay_events": 0,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "activity_after_completion-038",
+      "kind": "activity_after_completion",
+      "partition": "held_out",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_ACTIVITY_AFTER_COMPLETION"
+      ],
+      "observed_codes": [
+        "WATCH_ACTIVITY_AFTER_COMPLETION"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 2,
+      "detection_event": 2,
+      "detection_delay_events": 1,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "completion_without_milestones-039",
+      "kind": "completion_without_milestones",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_MISSING_SUCCESS_CRITERIA"
+      ],
+      "observed_codes": [
+        "WATCH_MISSING_SUCCESS_CRITERIA"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 2,
+      "detection_event": 2,
+      "detection_delay_events": 1,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "legitimate_pagination-040",
+      "kind": "legitimate_pagination",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 8,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "phased_long_running_task-041",
+      "kind": "phased_long_running_task",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 6,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "intermittent_connector_failure-042",
+      "kind": "intermittent_connector_failure",
+      "partition": "held_out",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 5,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "bounded_status_polling-043",
+      "kind": "bounded_status_polling",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 7,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "late_but_valid_progress-044",
+      "kind": "late_but_valid_progress",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 8,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "short_task_without_progress_api-045",
+      "kind": "short_task_without_progress_api",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 3,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "declared_multi_session_task-046",
+      "kind": "declared_multi_session_task",
+      "partition": "held_out",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 2,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "reported_cost_within_budget-047",
+      "kind": "reported_cost_within_budget",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 1,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "identical_retry_loop-048",
+      "kind": "identical_retry_loop",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_REPEATED_CALL"
+      ],
+      "observed_codes": [
+        "WATCH_REPEATED_CALL"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 6,
+      "detection_event": 4,
+      "detection_delay_events": 3,
+      "observed_waste_after_detection_usd": 0.002,
+      "projected_avoidable_waste_usd": 0.002,
+      "passed": true
+    },
+    {
+      "name": "connector_retry_storm-049",
+      "kind": "connector_retry_storm",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_RETRY_STORM"
+      ],
+      "observed_codes": [
+        "WATCH_RETRY_STORM"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 5,
+      "detection_event": 3,
+      "detection_delay_events": 2,
+      "observed_waste_after_detection_usd": 0.002,
+      "projected_avoidable_waste_usd": 0.002,
+      "passed": true
+    },
+    {
+      "name": "changing_argument_cycle-050",
+      "kind": "changing_argument_cycle",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_NEAR_CYCLIC_WORKFLOW"
+      ],
+      "observed_codes": [
+        "WATCH_NEAR_CYCLIC_WORKFLOW",
+        "WATCH_REPEATED_DENIAL",
+        "WATCH_RETRY_STORM",
+        "WATCH_UNEXPECTED_TOOL"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [
+        "WATCH_REPEATED_DENIAL",
+        "WATCH_RETRY_STORM",
+        "WATCH_UNEXPECTED_TOOL"
+      ],
+      "event_count": 6,
+      "detection_event": 2,
+      "detection_delay_events": 1,
+      "observed_waste_after_detection_usd": 0.004,
+      "projected_avoidable_waste_usd": 0.004,
+      "passed": true
+    },
+    {
+      "name": "undeclared_tool-051",
+      "kind": "undeclared_tool",
+      "partition": "held_out",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_UNEXPECTED_TOOL"
+      ],
+      "observed_codes": [
+        "WATCH_UNEXPECTED_TOOL"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 1,
+      "detection_event": 1,
+      "detection_delay_events": 0,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "unexpected_second_session-052",
+      "kind": "unexpected_second_session",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_UNEXPECTED_MULTI_SESSION"
+      ],
+      "observed_codes": [
+        "WATCH_UNEXPECTED_MULTI_SESSION"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 2,
+      "detection_event": 2,
+      "detection_delay_events": 1,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "reported_cost_overrun-053",
+      "kind": "reported_cost_overrun",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_COST_BUDGET_EXCEEDED"
+      ],
+      "observed_codes": [
+        "WATCH_COST_BUDGET_EXCEEDED"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 1,
+      "detection_event": 1,
+      "detection_delay_events": 0,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "activity_after_completion-054",
+      "kind": "activity_after_completion",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_ACTIVITY_AFTER_COMPLETION"
+      ],
+      "observed_codes": [
+        "WATCH_ACTIVITY_AFTER_COMPLETION"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 2,
+      "detection_event": 2,
+      "detection_delay_events": 1,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "completion_without_milestones-055",
+      "kind": "completion_without_milestones",
+      "partition": "held_out",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_MISSING_SUCCESS_CRITERIA"
+      ],
+      "observed_codes": [
+        "WATCH_MISSING_SUCCESS_CRITERIA"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 2,
+      "detection_event": 2,
+      "detection_delay_events": 1,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "legitimate_pagination-056",
+      "kind": "legitimate_pagination",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 8,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "phased_long_running_task-057",
+      "kind": "phased_long_running_task",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 6,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "intermittent_connector_failure-058",
+      "kind": "intermittent_connector_failure",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 5,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "bounded_status_polling-059",
+      "kind": "bounded_status_polling",
+      "partition": "held_out",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 7,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "late_but_valid_progress-060",
+      "kind": "late_but_valid_progress",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 8,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "short_task_without_progress_api-061",
+      "kind": "short_task_without_progress_api",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 3,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "declared_multi_session_task-062",
+      "kind": "declared_multi_session_task",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 2,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "reported_cost_within_budget-063",
+      "kind": "reported_cost_within_budget",
+      "partition": "held_out",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 1,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "identical_retry_loop-064",
+      "kind": "identical_retry_loop",
+      "partition": "held_out",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_REPEATED_CALL"
+      ],
+      "observed_codes": [
+        "WATCH_REPEATED_CALL"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 6,
+      "detection_event": 4,
+      "detection_delay_events": 3,
+      "observed_waste_after_detection_usd": 0.002,
+      "projected_avoidable_waste_usd": 0.002,
+      "passed": true
+    },
+    {
+      "name": "connector_retry_storm-065",
+      "kind": "connector_retry_storm",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_RETRY_STORM"
+      ],
+      "observed_codes": [
+        "WATCH_RETRY_STORM"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 5,
+      "detection_event": 3,
+      "detection_delay_events": 2,
+      "observed_waste_after_detection_usd": 0.002,
+      "projected_avoidable_waste_usd": 0.002,
+      "passed": true
+    },
+    {
+      "name": "changing_argument_cycle-066",
+      "kind": "changing_argument_cycle",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_NEAR_CYCLIC_WORKFLOW"
+      ],
+      "observed_codes": [
+        "WATCH_NEAR_CYCLIC_WORKFLOW",
+        "WATCH_REPEATED_DENIAL",
+        "WATCH_RETRY_STORM",
+        "WATCH_UNEXPECTED_TOOL"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [
+        "WATCH_REPEATED_DENIAL",
+        "WATCH_RETRY_STORM",
+        "WATCH_UNEXPECTED_TOOL"
+      ],
+      "event_count": 6,
+      "detection_event": 2,
+      "detection_delay_events": 1,
+      "observed_waste_after_detection_usd": 0.004,
+      "projected_avoidable_waste_usd": 0.004,
+      "passed": true
+    },
+    {
+      "name": "undeclared_tool-067",
+      "kind": "undeclared_tool",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_UNEXPECTED_TOOL"
+      ],
+      "observed_codes": [
+        "WATCH_UNEXPECTED_TOOL"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 1,
+      "detection_event": 1,
+      "detection_delay_events": 0,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "unexpected_second_session-068",
+      "kind": "unexpected_second_session",
+      "partition": "held_out",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_UNEXPECTED_MULTI_SESSION"
+      ],
+      "observed_codes": [
+        "WATCH_UNEXPECTED_MULTI_SESSION"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 2,
+      "detection_event": 2,
+      "detection_delay_events": 1,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "reported_cost_overrun-069",
+      "kind": "reported_cost_overrun",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_COST_BUDGET_EXCEEDED"
+      ],
+      "observed_codes": [
+        "WATCH_COST_BUDGET_EXCEEDED"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 1,
+      "detection_event": 1,
+      "detection_delay_events": 0,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "activity_after_completion-070",
+      "kind": "activity_after_completion",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_ACTIVITY_AFTER_COMPLETION"
+      ],
+      "observed_codes": [
+        "WATCH_ACTIVITY_AFTER_COMPLETION"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 2,
+      "detection_event": 2,
+      "detection_delay_events": 1,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "completion_without_milestones-071",
+      "kind": "completion_without_milestones",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_MISSING_SUCCESS_CRITERIA"
+      ],
+      "observed_codes": [
+        "WATCH_MISSING_SUCCESS_CRITERIA"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 2,
+      "detection_event": 2,
+      "detection_delay_events": 1,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "legitimate_pagination-072",
+      "kind": "legitimate_pagination",
+      "partition": "held_out",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 8,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "phased_long_running_task-073",
+      "kind": "phased_long_running_task",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 6,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "intermittent_connector_failure-074",
+      "kind": "intermittent_connector_failure",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 5,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "bounded_status_polling-075",
+      "kind": "bounded_status_polling",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 7,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "late_but_valid_progress-076",
+      "kind": "late_but_valid_progress",
+      "partition": "held_out",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 8,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "short_task_without_progress_api-077",
+      "kind": "short_task_without_progress_api",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 3,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "declared_multi_session_task-078",
+      "kind": "declared_multi_session_task",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 2,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "reported_cost_within_budget-079",
+      "kind": "reported_cost_within_budget",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 1,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "identical_retry_loop-080",
+      "kind": "identical_retry_loop",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_REPEATED_CALL"
+      ],
+      "observed_codes": [
+        "WATCH_REPEATED_CALL"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 6,
+      "detection_event": 4,
+      "detection_delay_events": 3,
+      "observed_waste_after_detection_usd": 0.002,
+      "projected_avoidable_waste_usd": 0.002,
+      "passed": true
+    },
+    {
+      "name": "connector_retry_storm-081",
+      "kind": "connector_retry_storm",
+      "partition": "held_out",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_RETRY_STORM"
+      ],
+      "observed_codes": [
+        "WATCH_RETRY_STORM"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 5,
+      "detection_event": 3,
+      "detection_delay_events": 2,
+      "observed_waste_after_detection_usd": 0.002,
+      "projected_avoidable_waste_usd": 0.002,
+      "passed": true
+    },
+    {
+      "name": "changing_argument_cycle-082",
+      "kind": "changing_argument_cycle",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_NEAR_CYCLIC_WORKFLOW"
+      ],
+      "observed_codes": [
+        "WATCH_NEAR_CYCLIC_WORKFLOW",
+        "WATCH_REPEATED_DENIAL",
+        "WATCH_RETRY_STORM",
+        "WATCH_UNEXPECTED_TOOL"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [
+        "WATCH_REPEATED_DENIAL",
+        "WATCH_RETRY_STORM",
+        "WATCH_UNEXPECTED_TOOL"
+      ],
+      "event_count": 6,
+      "detection_event": 2,
+      "detection_delay_events": 1,
+      "observed_waste_after_detection_usd": 0.004,
+      "projected_avoidable_waste_usd": 0.004,
+      "passed": true
+    },
+    {
+      "name": "undeclared_tool-083",
+      "kind": "undeclared_tool",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_UNEXPECTED_TOOL"
+      ],
+      "observed_codes": [
+        "WATCH_UNEXPECTED_TOOL"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 1,
+      "detection_event": 1,
+      "detection_delay_events": 0,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "unexpected_second_session-084",
+      "kind": "unexpected_second_session",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_UNEXPECTED_MULTI_SESSION"
+      ],
+      "observed_codes": [
+        "WATCH_UNEXPECTED_MULTI_SESSION"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 2,
+      "detection_event": 2,
+      "detection_delay_events": 1,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "reported_cost_overrun-085",
+      "kind": "reported_cost_overrun",
+      "partition": "held_out",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_COST_BUDGET_EXCEEDED"
+      ],
+      "observed_codes": [
+        "WATCH_COST_BUDGET_EXCEEDED"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 1,
+      "detection_event": 1,
+      "detection_delay_events": 0,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "activity_after_completion-086",
+      "kind": "activity_after_completion",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_ACTIVITY_AFTER_COMPLETION"
+      ],
+      "observed_codes": [
+        "WATCH_ACTIVITY_AFTER_COMPLETION"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 2,
+      "detection_event": 2,
+      "detection_delay_events": 1,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "completion_without_milestones-087",
+      "kind": "completion_without_milestones",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_MISSING_SUCCESS_CRITERIA"
+      ],
+      "observed_codes": [
+        "WATCH_MISSING_SUCCESS_CRITERIA"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 2,
+      "detection_event": 2,
+      "detection_delay_events": 1,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "legitimate_pagination-088",
+      "kind": "legitimate_pagination",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 8,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "phased_long_running_task-089",
+      "kind": "phased_long_running_task",
+      "partition": "held_out",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 6,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "intermittent_connector_failure-090",
+      "kind": "intermittent_connector_failure",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 5,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "bounded_status_polling-091",
+      "kind": "bounded_status_polling",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 7,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "late_but_valid_progress-092",
+      "kind": "late_but_valid_progress",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 8,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "short_task_without_progress_api-093",
+      "kind": "short_task_without_progress_api",
+      "partition": "held_out",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 3,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "declared_multi_session_task-094",
+      "kind": "declared_multi_session_task",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 2,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "reported_cost_within_budget-095",
+      "kind": "reported_cost_within_budget",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 1,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "identical_retry_loop-096",
+      "kind": "identical_retry_loop",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_REPEATED_CALL"
+      ],
+      "observed_codes": [
+        "WATCH_REPEATED_CALL"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 6,
+      "detection_event": 4,
+      "detection_delay_events": 3,
+      "observed_waste_after_detection_usd": 0.002,
+      "projected_avoidable_waste_usd": 0.002,
+      "passed": true
+    },
+    {
+      "name": "connector_retry_storm-097",
+      "kind": "connector_retry_storm",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_RETRY_STORM"
+      ],
+      "observed_codes": [
+        "WATCH_RETRY_STORM"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 5,
+      "detection_event": 3,
+      "detection_delay_events": 2,
+      "observed_waste_after_detection_usd": 0.002,
+      "projected_avoidable_waste_usd": 0.002,
+      "passed": true
+    },
+    {
+      "name": "changing_argument_cycle-098",
+      "kind": "changing_argument_cycle",
+      "partition": "held_out",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_NEAR_CYCLIC_WORKFLOW"
+      ],
+      "observed_codes": [
+        "WATCH_NEAR_CYCLIC_WORKFLOW",
+        "WATCH_REPEATED_DENIAL",
+        "WATCH_RETRY_STORM",
+        "WATCH_UNEXPECTED_TOOL"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [
+        "WATCH_REPEATED_DENIAL",
+        "WATCH_RETRY_STORM",
+        "WATCH_UNEXPECTED_TOOL"
+      ],
+      "event_count": 6,
+      "detection_event": 2,
+      "detection_delay_events": 1,
+      "observed_waste_after_detection_usd": 0.004,
+      "projected_avoidable_waste_usd": 0.004,
+      "passed": true
+    },
+    {
+      "name": "undeclared_tool-099",
+      "kind": "undeclared_tool",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_UNEXPECTED_TOOL"
+      ],
+      "observed_codes": [
+        "WATCH_UNEXPECTED_TOOL"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 1,
+      "detection_event": 1,
+      "detection_delay_events": 0,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "unexpected_second_session-100",
+      "kind": "unexpected_second_session",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_UNEXPECTED_MULTI_SESSION"
+      ],
+      "observed_codes": [
+        "WATCH_UNEXPECTED_MULTI_SESSION"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 2,
+      "detection_event": 2,
+      "detection_delay_events": 1,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "reported_cost_overrun-101",
+      "kind": "reported_cost_overrun",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_COST_BUDGET_EXCEEDED"
+      ],
+      "observed_codes": [
+        "WATCH_COST_BUDGET_EXCEEDED"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 1,
+      "detection_event": 1,
+      "detection_delay_events": 0,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "activity_after_completion-102",
+      "kind": "activity_after_completion",
+      "partition": "held_out",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_ACTIVITY_AFTER_COMPLETION"
+      ],
+      "observed_codes": [
+        "WATCH_ACTIVITY_AFTER_COMPLETION"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 2,
+      "detection_event": 2,
+      "detection_delay_events": 1,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "completion_without_milestones-103",
+      "kind": "completion_without_milestones",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_MISSING_SUCCESS_CRITERIA"
+      ],
+      "observed_codes": [
+        "WATCH_MISSING_SUCCESS_CRITERIA"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 2,
+      "detection_event": 2,
+      "detection_delay_events": 1,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "legitimate_pagination-104",
+      "kind": "legitimate_pagination",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 8,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "phased_long_running_task-105",
+      "kind": "phased_long_running_task",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 6,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "intermittent_connector_failure-106",
+      "kind": "intermittent_connector_failure",
+      "partition": "held_out",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 5,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "bounded_status_polling-107",
+      "kind": "bounded_status_polling",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 7,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "late_but_valid_progress-108",
+      "kind": "late_but_valid_progress",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 8,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "short_task_without_progress_api-109",
+      "kind": "short_task_without_progress_api",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 3,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "declared_multi_session_task-110",
+      "kind": "declared_multi_session_task",
+      "partition": "held_out",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 2,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "reported_cost_within_budget-111",
+      "kind": "reported_cost_within_budget",
+      "partition": "development",
+      "expected_abnormal": false,
+      "observed_abnormal": false,
+      "expected_codes": [],
+      "observed_codes": [],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 1,
+      "detection_event": null,
+      "detection_delay_events": null,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "identical_retry_loop-112",
+      "kind": "identical_retry_loop",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_REPEATED_CALL"
+      ],
+      "observed_codes": [
+        "WATCH_REPEATED_CALL"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 6,
+      "detection_event": 4,
+      "detection_delay_events": 3,
+      "observed_waste_after_detection_usd": 0.002,
+      "projected_avoidable_waste_usd": 0.002,
+      "passed": true
+    },
+    {
+      "name": "connector_retry_storm-113",
+      "kind": "connector_retry_storm",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_RETRY_STORM"
+      ],
+      "observed_codes": [
+        "WATCH_RETRY_STORM"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 5,
+      "detection_event": 3,
+      "detection_delay_events": 2,
+      "observed_waste_after_detection_usd": 0.002,
+      "projected_avoidable_waste_usd": 0.002,
+      "passed": true
+    },
+    {
+      "name": "changing_argument_cycle-114",
+      "kind": "changing_argument_cycle",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_NEAR_CYCLIC_WORKFLOW"
+      ],
+      "observed_codes": [
+        "WATCH_NEAR_CYCLIC_WORKFLOW",
+        "WATCH_REPEATED_DENIAL",
+        "WATCH_RETRY_STORM",
+        "WATCH_UNEXPECTED_TOOL"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [
+        "WATCH_REPEATED_DENIAL",
+        "WATCH_RETRY_STORM",
+        "WATCH_UNEXPECTED_TOOL"
+      ],
+      "event_count": 6,
+      "detection_event": 2,
+      "detection_delay_events": 1,
+      "observed_waste_after_detection_usd": 0.004,
+      "projected_avoidable_waste_usd": 0.004,
+      "passed": true
+    },
+    {
+      "name": "undeclared_tool-115",
+      "kind": "undeclared_tool",
+      "partition": "held_out",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_UNEXPECTED_TOOL"
+      ],
+      "observed_codes": [
+        "WATCH_UNEXPECTED_TOOL"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 1,
+      "detection_event": 1,
+      "detection_delay_events": 0,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "unexpected_second_session-116",
+      "kind": "unexpected_second_session",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_UNEXPECTED_MULTI_SESSION"
+      ],
+      "observed_codes": [
+        "WATCH_UNEXPECTED_MULTI_SESSION"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 2,
+      "detection_event": 2,
+      "detection_delay_events": 1,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "reported_cost_overrun-117",
+      "kind": "reported_cost_overrun",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_COST_BUDGET_EXCEEDED"
+      ],
+      "observed_codes": [
+        "WATCH_COST_BUDGET_EXCEEDED"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 1,
+      "detection_event": 1,
+      "detection_delay_events": 0,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "activity_after_completion-118",
+      "kind": "activity_after_completion",
+      "partition": "development",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_ACTIVITY_AFTER_COMPLETION"
+      ],
+      "observed_codes": [
+        "WATCH_ACTIVITY_AFTER_COMPLETION"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 2,
+      "detection_event": 2,
+      "detection_delay_events": 1,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    },
+    {
+      "name": "completion_without_milestones-119",
+      "kind": "completion_without_milestones",
+      "partition": "held_out",
+      "expected_abnormal": true,
+      "observed_abnormal": true,
+      "expected_codes": [
+        "WATCH_MISSING_SUCCESS_CRITERIA"
+      ],
+      "observed_codes": [
+        "WATCH_MISSING_SUCCESS_CRITERIA"
+      ],
+      "missed_expected_codes": [],
+      "unexpected_codes": [],
+      "event_count": 2,
+      "detection_event": 2,
+      "detection_delay_events": 1,
+      "observed_waste_after_detection_usd": 0,
+      "projected_avoidable_waste_usd": 0,
+      "passed": true
+    }
+  ]
+}

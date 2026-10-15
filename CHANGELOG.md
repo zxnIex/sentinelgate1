@@ -1,5 +1,84 @@
 # Changelog
 
+## 0.17.0
+
+- Added a safe installer and `sentinelgate init`, `doctor`, `serve`, `generate-policy`, and
+  `snippet` commands.
+- Added OpenAI Agents SDK, LangGraph/LangChain, Python, and generic MCP adoption surfaces with
+  explicit dependency boundaries.
+- Added a conservative tool-discovery policy compiler. Generated policy is review-required and
+  never activated automatically.
+- Added an in-console integration compiler and a complete protected OpenAI Responses example.
+- Added privacy-minimised, allowlisted, explicit opt-in onboarding funnel telemetry; it is off by
+  default and never records prompts, tool arguments, tokens, paths, email addresses, or secrets.
+- Added configurable display branding while retaining stable package and API identifiers.
+- Added a design-partner quickstart, demo recording script, and independent adoption test.
+- Improved diagnostics for Python version, distinct secrets, Git tracking, policy validity, and
+  running-gateway version.
+- Secret rotation now preserves unrelated `.env` configuration such as GitHub and OIDC settings.
+
+## 0.16.0
+
+- Added local operator accounts derived from OIDC identity, organisations and tenant-bound
+  memberships with viewer, analyst, approver, administrator and owner roles.
+- Replaced browser access tokens in URL fragments/session storage with opaque, revocable,
+  server-side sessions and double-submit CSRF tokens. Bearer access remains for integrations.
+- Added versioned terms/privacy acceptance, email-bound single-use invitations, account
+  deactivation, metadata inventory export and delayed, reversible tenant-deletion requests.
+- Added atomic abuse limits for organisation creation and invitation creation/acceptance.
+- Added a fail-closed shared-mode route allowlist. Legacy operator routes that have not completed
+  explicit tenant review return `SHARED_SAAS_ROUTE_NOT_HARDENED` rather than risking data exposure.
+- Added production checks requiring OIDC-only authentication, billing, PostgreSQL and approved
+  non-draft legal-document versions for shared mode.
+- Marked SentinelGate as a compatibility-only working name pending trademark/domain clearance.
+
+This release does not supply legal documents, tax/accounting advice, live payment validation,
+incident staffing, penetration testing or customer traffic. Shared mode is a boundary preview;
+dedicated/self-hosted mode remains the supported pilot path.
+
+## 0.15.0
+
+- Reframed the commercial product as **Gate**, deterministic **Watch**, and intelligence/response
+  **Watch+** while retaining the existing API paths for backwards compatibility.
+- Added a versioned server-side plan catalogue, tenant subscription projection, usage snapshots,
+  Gate Free's ten-agent allowance and feature/quota enforcement boundaries.
+- Added Stripe-hosted subscription Checkout, customer portal sessions, signed webhook validation,
+  durable event idempotency and server-selected price identifiers.
+- Added opt-in Watch+ LLM analysis with strict structured output, metadata-only default input,
+  event-reference validation, confidence limits and explicit advisory-only behavior.
+- Added administrator-configured deterministic task-pause policies, session-level credential
+  revocation and authenticated controlled task recovery.
+- Split the website and console navigation into Gate, Watch and Watch+ with plan/usage visibility.
+
+The prices are an unvalidated commercial hypothesis. LLM findings cannot execute interventions.
+Shared public SaaS multi-tenancy, exact concurrent usage accounting and independent efficacy
+validation remain explicit release gates.
+
+## 0.14.0
+
+- Reframed the product as three connected operational surfaces: **Gate** for inline
+  enforcement, **Watch** for runtime detection, and **Respond** for bounded human-authorised
+  action.
+- Versioned Watch events as schema `1.0`, published JSON Schema, added session and milestone
+  context, and rejected unknown event versions.
+- Added deterministic detection for undeclared tools, activity after completion, missing
+  success criteria, repeated milestones, unexpected multi-session ownership and tool-shape
+  cycles with changing arguments.
+- Added privacy-minimised OpenTelemetry GenAI span ingestion.
+- Added per-agent shadow behavioural baselines and least-privilege scope recommendations;
+  neither capability changes policy automatically.
+- Added tamper-evident task flight recorders, side-effect-free Watch threshold replay and
+  persisted bounded intervention plans.
+- Intervention approval and execution are separate authenticated operations. Supported
+  actions are limited to review, pause one task, restrict an agent to declared tools or
+  temporary quarantine.
+- High-risk Watch findings now use the durable outbox and existing signed webhook worker.
+- Added a 120-workflow scripted-agent evaluation with 90 development and 30 held-out
+  workflows, explicit confusion matrices, detection delay and a named waste counterfactual.
+
+The v0.14 evaluation remains project-authored and is not independent validation. Watch does
+not autonomously execute an intervention.
+
 ## 0.11.0
 
 - Added SentinelGate Watch Alpha, a monitor-only task-behavior layer separated from Core

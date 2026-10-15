@@ -62,12 +62,14 @@ def test_benchmark_suite_stamps_release_and_limitations(monkeypatch):
     monkeypatch.setattr(benchmark_suite, "run_adversarial", lambda _: {"cases": 100})
     monkeypatch.setattr(benchmark_suite, "run_resilience", lambda: {"passed": 4})
     result = benchmark_suite.run(5)
-    assert result["sentinelgate_version"] == "0.11.0"
+    assert result["sentinelgate_version"] == "0.17.0"
     assert result["adversarial_probes"]["cases"] == 100
     assert result["limitations"]
 
 
-def test_backup_creation_and_restore_drill_use_fixed_client_commands(monkeypatch, tmp_path):
+def test_backup_creation_and_restore_drill_use_fixed_client_commands(
+    monkeypatch, tmp_path
+):
     calls = []
 
     def fake_run(arguments, **kwargs):

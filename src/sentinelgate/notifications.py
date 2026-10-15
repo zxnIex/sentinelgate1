@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from sentinelgate.models import ApprovalRecord
+from sentinelgate.models import ApprovalRecord, WatchFinding
 from sentinelgate.security import canonical_json
 
 
@@ -27,12 +27,17 @@ class ApprovalNotifier:
         if self.webhook_url:
             parsed = urlparse(self.webhook_url)
             development_local = parsed.scheme == "http" and parsed.hostname in {
-                "127.0.0.1", "localhost",
+                "127.0.0.1",
+                "localhost",
             }
             if parsed.scheme != "https" and not development_local:
-                raise ValueError("Approval webhook must use HTTPS or local development HTTP")
+                raise ValueError(
+                    "Approval webhook must use HTTPS or local development HTTP"
+                )
             if parsed.username or parsed.password or parsed.fragment:
-                raise ValueError("Approval webhook URL contains unsupported credentials or fragment")
+                raise ValueError(
+                    "Approval webhook URL contains unsupported credentials or fragment"
+                )
 
     @property
     def enabled(self) -> bool:
@@ -57,9 +62,42 @@ class ApprovalNotifier:
             ),
         }
         encoded = canonical_json(payload).encode("utf-8")
-        signature = hmac.new(
-            self.signing_secret, encoded, hashlib.sha256
-        ).hexdigest()
+        signature = hmac.new(self.signing_secret, encoded, hashlib.sha256).hexdigest()
+        try:
+            response = self.client.post(
+                self.webhook_url,
+                content=encoded,
+                headers={
+                    "Content-Type": "application/json",
+                    "X-SentinelGate-Signature": f"sha256={signature}",
+                },
+            )
+            response.raise_for_status()
+            return True
+        except httpx.HTTPError:
+            return False
+
+    def notify_finding(self, finding: WatchFinding) -> bool:
+        if not self.webhook_url:
+            return False
+        payload = {
+            "event": "sentinelgate.watch.finding",
+            "finding_id": finding.id,
+            "tenant_id": finding.tenant_id,
+            "agent_id": finding.agent_id,
+            "task_id": finding.task_id,
+            "code": finding.code,
+            "severity": finding.severity,
+            "summary": finding.summary,
+            "review_url": f"{self.console_url}/console/respond",
+            "text": (
+                f"SentinelGate Watch {finding.severity} finding: "
+                f"{finding.code} for {finding.agent_id}. "
+                f"Review: {self.console_url}/console/respond"
+            ),
+        }
+        encoded = canonical_json(payload).encode("utf-8")
+        signature = hmac.new(self.signing_secret, encoded, hashlib.sha256).hexdigest()
         try:
             response = self.client.post(
                 self.webhook_url,

@@ -94,7 +94,9 @@ class ProvenanceService:
         )
         for pointer, override in request.field_overrides.items():
             if pointer not in leaves:
-                raise ValueError(f"Field override does not resolve to a leaf: {pointer}")
+                raise ValueError(
+                    f"Field override does not resolve to a leaf: {pointer}"
+                )
             current = field_taint[pointer]
             field_taint[pointer] = FieldTaint(
                 content_digest=current.content_digest,
@@ -192,7 +194,9 @@ class ProvenanceService:
             parent_classification = highest_classification(
                 item.classification for item in inherited_fields
             )
-            parent_labels = {label for item in inherited_fields for label in item.labels}
+            parent_labels = {
+                label for item in inherited_fields for label in item.labels
+            }
             field_taint = {
                 pointer: FieldTaint(
                     content_digest=item.content_digest,
@@ -258,7 +262,9 @@ class ProvenanceService:
                 field_taint[pointer] = combine_field_taint(value, combined)
         else:
             if set(request.derivations) != set(outputs):
-                raise ValueError("Every output leaf requires a deterministic derivation")
+                raise ValueError(
+                    "Every output leaf requires a deterministic derivation"
+                )
             for pointer, output_value in outputs.items():
                 recipe = request.derivations[pointer]
                 try:
@@ -294,7 +300,11 @@ class ProvenanceService:
         signals = injection_signals(content)
         lineage_id = str(uuid4())
         parent_ids = sorted(
-            {lineage for item in verified_inputs.values() for lineage in item.lineage_ids}
+            {
+                lineage
+                for item in verified_inputs.values()
+                for lineage in item.lineage_ids
+            }
         )
         for pointer, item in field_taint.items():
             field_taint[pointer] = item.model_copy(
@@ -365,7 +375,9 @@ class ProvenanceService:
             labels = payload.get("labels", [])
             parent_ids = payload.get("parent_ids", [])
             raw_field_taint = payload.get("field_taint", {})
-            if not isinstance(labels, list) or not all(isinstance(v, str) for v in labels):
+            if not isinstance(labels, list) or not all(
+                isinstance(v, str) for v in labels
+            ):
                 raise TokenError("Invalid provenance labels")
             if not isinstance(parent_ids, list) or not all(
                 isinstance(v, str) for v in parent_ids
@@ -412,7 +424,9 @@ class ProvenanceService:
         source = self.verify_many([token], tenant_id)[0]
         missing = [pointer for pointer in paths if pointer not in source.field_taint]
         if missing:
-            raise TokenError("Declassification path is not present in signed provenance")
+            raise TokenError(
+                "Declassification path is not present in signed provenance"
+            )
         lineage_id = str(uuid4())
         field_taint = dict(source.field_taint)
         for pointer in paths:
@@ -423,7 +437,9 @@ class ProvenanceService:
                     "lineage_ids": sorted({*current.lineage_ids, lineage_id}),
                 }
             )
-        labels = sorted({label for item in field_taint.values() for label in item.labels})
+        labels = sorted(
+            {label for item in field_taint.values() for label in item.labels}
+        )
         token_value, expires = self.signer.issue(
             f"declassified:{reviewer}",
             "sentinelgate-provenance",

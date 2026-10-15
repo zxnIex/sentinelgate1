@@ -28,7 +28,7 @@ def handle_mcp(
             {
                 "protocolVersion": PROTOCOL_VERSION,
                 "capabilities": {"tools": {"listChanged": False}},
-                "serverInfo": {"name": "SentinelGate", "version": "0.11.0"},
+                "serverInfo": {"name": "SentinelGate", "version": "0.17.0"},
                 "instructions": (
                     "All tool calls are identity-, provenance-, taint- and policy-checked. "
                     "Pass trace metadata in params._meta.sentinelgate."
@@ -45,7 +45,11 @@ def handle_mcp(
     name = params.get("name")
     arguments = params.get("arguments") or {}
     metadata = (params.get("_meta") or {}).get("sentinelgate") or {}
-    if not isinstance(name, str) or not isinstance(arguments, dict) or not isinstance(metadata, dict):
+    if (
+        not isinstance(name, str)
+        or not isinstance(arguments, dict)
+        or not isinstance(metadata, dict)
+    ):
         return _error(request_id, -32602, "Invalid tool call parameters")
     try:
         call = ToolCallRequest(
@@ -67,7 +71,9 @@ def handle_mcp(
         "decision": execution.decision.decision.value if execution.decision else None,
         "reasons": execution.decision.reason_codes if execution.decision else [],
         "approval_id": execution.approval_id,
-        "classification": execution.classification.value if execution.classification else None,
+        "classification": execution.classification.value
+        if execution.classification
+        else None,
         "taint_labels": execution.taint_labels,
         "trace_id": execution.trace_id or call.trace_id,
     }

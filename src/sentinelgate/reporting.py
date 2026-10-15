@@ -8,10 +8,14 @@ from sentinelgate.settings import Settings
 from sentinelgate.storage import Store
 
 
-def security_evidence_report(store: Store, settings: Settings, limit: int = 500) -> dict[str, Any]:
+def security_evidence_report(
+    store: Store, settings: Settings, limit: int = 500
+) -> dict[str, Any]:
     events = store.recent_audit(limit)
     decisions = [event for event in events if event["event_type"] == "policy_decision"]
-    verdicts = Counter(str(event["payload"].get("decision", "unknown")) for event in decisions)
+    verdicts = Counter(
+        str(event["payload"].get("decision", "unknown")) for event in decisions
+    )
     risks = Counter(str(event["payload"].get("risk", "unknown")) for event in decisions)
     reasons = Counter(
         str(reason)
@@ -22,7 +26,11 @@ def security_evidence_report(store: Store, settings: Settings, limit: int = 500)
     controls = [
         {
             "control": "Agent access is scoped and revocable",
-            "evidence": ["registered_agents", "agent_token_issued", "agent_tokens_revoked"],
+            "evidence": [
+                "registered_agents",
+                "agent_token_issued",
+                "agent_tokens_revoked",
+            ],
             "status": "implemented",
         },
         {
@@ -50,7 +58,7 @@ def security_evidence_report(store: Store, settings: Settings, limit: int = 500)
         "report": "SentinelGate security evidence",
         "schema_version": "1.0",
         "generated_at": utc_now().isoformat(),
-        "product_version": "0.11.0",
+        "product_version": "0.17.0",
         "enforcement_mode": settings.enforcement_mode.value,
         "scope": {"audit_events_considered": len(events), "maximum_events": limit},
         "integrity": {"audit_chain_valid": store.verify_audit_chain()},

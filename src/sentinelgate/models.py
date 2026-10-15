@@ -1,17 +1,15 @@
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
-TaintLabel = Annotated[
-    str, Field(pattern=r"^[a-zA-Z0-9_.:-]{1,64}$", max_length=64)
+TaintLabel = Annotated[str, Field(pattern=r"^[a-zA-Z0-9_.:-]{1,64}$", max_length=64)]
+JsonPointer = Annotated[
+    str, Field(pattern=r"^(?:/(?:[^~/]|~[01])*)*$", max_length=1024)
 ]
-JsonPointer = Annotated[str, Field(pattern=r"^(?:/(?:[^~/]|~[01])*)*$", max_length=1024)]
-TraceId = Annotated[
-    str, Field(pattern=r"^[a-zA-Z0-9_.:-]{1,128}$", max_length=128)
-]
+TraceId = Annotated[str, Field(pattern=r"^[a-zA-Z0-9_.:-]{1,128}$", max_length=128)]
 
 
 def utc_now() -> datetime:
@@ -168,9 +166,7 @@ class ToolCallRequest(BaseModel):
     purpose: str = Field(default="", max_length=1000)
     trace_id: TraceId = Field(default_factory=lambda: str(uuid4()))
     task_id: TraceId | None = None
-    mcp_server_id: str | None = Field(
-        default=None, pattern=r"^[a-zA-Z0-9_.:-]{1,128}$"
-    )
+    mcp_server_id: str | None = Field(default=None, pattern=r"^[a-zA-Z0-9_.:-]{1,128}$")
 
 
 class SecurityFinding(BaseModel):
@@ -352,10 +348,12 @@ class WatchEventType(StrEnum):
 
 class WatchTaskCreateRequest(BaseModel):
     task_id: TraceId = Field(default_factory=lambda: str(uuid4()))
+    workflow_id: TraceId | None = None
     description: str = Field(min_length=1, max_length=2000)
     profile: WatchProfile = WatchProfile.BALANCED
     expected_tools: list[str] = Field(default_factory=list, max_length=50)
     success_criteria: list[str] = Field(default_factory=list, max_length=50)
+    allow_multi_session: bool = False
     max_runtime_seconds: int = Field(default=3600, ge=60, le=604800)
     max_tool_calls: int = Field(default=250, ge=1, le=1_000_000)
     max_cost_usd: float = Field(default=10.0, ge=0, le=1_000_000)
@@ -363,12 +361,14 @@ class WatchTaskCreateRequest(BaseModel):
 
 class WatchTaskRecord(BaseModel):
     task_id: TraceId
+    workflow_id: TraceId
     tenant_id: str
     agent_id: str
     description: str
     profile: WatchProfile
     expected_tools: list[str] = Field(default_factory=list)
     success_criteria: list[str] = Field(default_factory=list)
+    allow_multi_session: bool = False
     max_runtime_seconds: int
     max_tool_calls: int
     max_cost_usd: float
@@ -381,7 +381,9 @@ class WatchTaskRecord(BaseModel):
 
 
 class WatchEventRequest(BaseModel):
+    schema_version: Literal["1.0"] = "1.0"
     task_id: TraceId
+    session_id: TraceId | None = None
     event_type: WatchEventType
     tool_name: str | None = Field(
         default=None, pattern=r"^[a-zA-Z][a-zA-Z0-9_.:-]{0,127}$"
@@ -390,6 +392,7 @@ class WatchEventRequest(BaseModel):
     error_code: str | None = Field(default=None, max_length=128)
     call_fingerprint: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     progress_signal: str | None = Field(default=None, max_length=256)
+    milestone_id: str | None = Field(default=None, pattern=r"^[a-zA-Z0-9_.:-]{1,128}$")
     input_tokens: int = Field(default=0, ge=0, le=1_000_000_000)
     output_tokens: int = Field(default=0, ge=0, le=1_000_000_000)
     estimated_cost_usd: float = Field(default=0.0, ge=0, le=1_000_000)
@@ -421,6 +424,94 @@ class WatchFinding(BaseModel):
     resolved_at: datetime | None = None
     reviewer: str | None = None
     note: str = ""
+    detector_type: str = Field(
+        default="deterministic", pattern=r"^(deterministic|llm)$"
+    )
+    analysis_id: str | None = None
+
+
+class InterventionAction(StrEnum):
+    REVIEW_TASK = "review_task"
+    PAUSE_TASK = "pause_task"
+    RESTRICT_AGENT = "restrict_agent"
+    QUARANTINE_AGENT = "quarantine_agent"
+
+
+class InterventionPlan(BaseModel):
+    id: str
+    finding_id: str
+    tenant_id: str
+    agent_id: str
+    task_id: TraceId
+    action: InterventionAction
+    rationale: str
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    status: str = Field(
+        pattern=r"^(proposed|approved|rejected|executing|executed|failed)$"
+    )
+    created_at: datetime
+    resolved_at: datetime | None = None
+    reviewer: str | None = None
+    note: str = ""
+
+
+class InterventionActionRequest(BaseModel):
+    decision: str = Field(pattern=r"^(approve|reject)$")
+    note: str = Field(default="", max_length=1000)
+
+
+class WatchReplayRequest(BaseModel):
+    tenant_id: str | None = Field(default=None, pattern=r"^[a-zA-Z0-9_.:-]{1,128}$")
+    candidate_profile: WatchProfile
+    task_ids: list[TraceId] = Field(default_factory=list, max_length=500)
+    limit: int = Field(default=100, ge=1, le=500)
+
+
+class WatchReplayTaskResult(BaseModel):
+    task_id: TraceId
+    current_codes: list[str]
+    candidate_codes: list[str]
+    added_codes: list[str]
+    removed_codes: list[str]
+
+
+class WatchReplayResult(BaseModel):
+    evaluated_tasks: int
+    changed_tasks: int
+    candidate_profile: WatchProfile
+    added_findings: int
+    removed_findings: int
+    results: list[WatchReplayTaskResult]
+
+
+class FlightRecorder(BaseModel):
+    task: WatchTaskRecord
+    events: list[WatchEventRecord]
+    findings: list[WatchFinding]
+    interventions: list[InterventionPlan]
+    integrity: dict[str, Any]
+
+
+class OTelGenAISpan(BaseModel):
+    name: str = Field(min_length=1, max_length=256)
+    trace_id: TraceId
+    span_id: str = Field(pattern=r"^[a-fA-F0-9]{16,32}$")
+    attributes: dict[str, str | int | float | bool] = Field(
+        default_factory=dict, max_length=100
+    )
+    duration_ms: float | None = Field(default=None, ge=0, le=86_400_000)
+    status: str = Field(default="ok", pattern=r"^(ok|error|unset)$")
+
+
+class OTelGenAIIngestRequest(BaseModel):
+    schema_version: Literal["1.0"] = "1.0"
+    spans: list[OTelGenAISpan] = Field(min_length=1, max_length=1000)
+
+
+class OTelGenAIIngestResult(BaseModel):
+    accepted: int
+    rejected: int
+    task_ids: list[TraceId]
 
 
 class WatchFindingAction(BaseModel):
@@ -435,6 +526,214 @@ class WatchSummary(BaseModel):
     monitored_events: int
     estimated_cost_usd: float
     prevented_cost_usd: float = 0.0
+
+
+class WatchProgress(BaseModel):
+    task_id: TraceId
+    tenant_id: str
+    agent_id: str
+    completed_milestones: list[str]
+    missing_milestones: list[str]
+    progress_score: float = Field(ge=0, le=1)
+    last_progress_at: datetime | None = None
+    evidence_event_ids: list[str] = Field(default_factory=list)
+    method: Literal["declared_milestones"] = "declared_milestones"
+
+
+class ProductPlan(StrEnum):
+    GATE_FREE = "gate_free"
+    GATE = "gate"
+    WATCH = "watch"
+    WATCH_PLUS = "watch_plus"
+    ENTERPRISE = "enterprise"
+
+
+class TenantSubscription(BaseModel):
+    tenant_id: str
+    plan: ProductPlan
+    status: str
+    stripe_customer_id: str | None = None
+    stripe_subscription_id: str | None = None
+    extra_agents: int = 0
+    current_period_end: datetime | None = None
+    updated_at: datetime
+
+
+class EntitlementSnapshot(BaseModel):
+    tenant_id: str
+    plan: ProductPlan
+    subscription_status: str
+    features: list[str]
+    agent_limit: int | None
+    decision_limit_monthly: int | None
+    watch_event_limit_monthly: int | None
+    llm_analysis_limit_monthly: int | None
+    retention_days: int | None
+    usage: dict[str, int]
+    billing_attention: bool = False
+    enforcement_enabled: bool = False
+
+
+class BillingCheckoutRequest(BaseModel):
+    tenant_id: str = Field(pattern=r"^[a-zA-Z0-9_.:-]{1,128}$")
+    plan: ProductPlan
+    extra_agents: int = Field(default=0, ge=0, le=10_000)
+    customer_email: str | None = Field(default=None, max_length=320)
+
+
+class BillingSessionResponse(BaseModel):
+    url: str
+
+
+class BillingPortalRequest(BaseModel):
+    tenant_id: str = Field(pattern=r"^[a-zA-Z0-9_.:-]{1,128}$")
+
+
+class OrganisationStatus(StrEnum):
+    ACTIVE = "active"
+    SUSPENDED = "suspended"
+    DELETION_PENDING = "deletion_pending"
+    DELETED = "deleted"
+
+
+class MembershipRole(StrEnum):
+    VIEWER = "viewer"
+    ANALYST = "analyst"
+    APPROVER = "approver"
+    ADMINISTRATOR = "administrator"
+    OWNER = "owner"
+
+
+class OperatorAccount(BaseModel):
+    subject: str
+    email: str | None = None
+    status: Literal["active", "suspended", "deleted"] = "active"
+    created_at: datetime
+    updated_at: datetime
+
+
+class Organisation(BaseModel):
+    tenant_id: str = Field(pattern=r"^[a-zA-Z0-9_.:-]{1,128}$")
+    name: str = Field(min_length=2, max_length=120)
+    status: OrganisationStatus = OrganisationStatus.ACTIVE
+    created_by: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class TenantMembership(BaseModel):
+    tenant_id: str
+    subject: str
+    email: str | None = None
+    role: MembershipRole
+    status: Literal["active", "suspended"] = "active"
+    created_at: datetime
+    updated_at: datetime
+
+
+class OrganisationCreateRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    tenant_id: str | None = Field(
+        default=None, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_.:-]{1,127}$"
+    )
+
+
+class InvitationCreateRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    role: MembershipRole
+    expires_in_hours: int = Field(default=72, ge=1, le=168)
+
+
+class TenantInvitation(BaseModel):
+    id: str
+    tenant_id: str
+    email: str
+    role: MembershipRole
+    status: Literal["pending", "accepted", "revoked", "expired"]
+    created_by: str
+    created_at: datetime
+    expires_at: datetime
+    accepted_at: datetime | None = None
+
+
+class InvitationTokenResponse(BaseModel):
+    invitation: TenantInvitation
+    token: str
+
+
+class InvitationAcceptRequest(BaseModel):
+    token: str = Field(min_length=32, max_length=512)
+
+
+class LegalAcceptanceRequest(BaseModel):
+    terms_version: str = Field(pattern=r"^[a-zA-Z0-9_.:-]{1,64}$")
+    privacy_version: str = Field(pattern=r"^[a-zA-Z0-9_.:-]{1,64}$")
+
+
+class DeletionRequest(BaseModel):
+    confirmation: str
+    reason: str = Field(default="", max_length=1000)
+
+
+class OperatorSession(BaseModel):
+    id: str
+    subject: str
+    email: str | None = None
+    csrf_token: str
+    expires_at: datetime
+
+
+class WatchIntelligenceRequest(BaseModel):
+    tenant_id: str = Field(pattern=r"^[a-zA-Z0-9_.:-]{1,128}$")
+    include_task_description: bool = False
+
+
+class WatchIntelligenceResult(BaseModel):
+    analysis_id: str
+    task_id: TraceId
+    tenant_id: str
+    model: str
+    prompt_version: str
+    risk_found: bool
+    category: str
+    severity: str
+    confidence: float = Field(ge=0, le=0.95)
+    summary: str
+    evidence_event_ids: list[str] = Field(default_factory=list)
+    recommended_action: str
+    limitations: list[str] = Field(default_factory=list)
+    finding_id: str | None = None
+    created_at: datetime
+
+
+class ResponsePolicyRequest(BaseModel):
+    tenant_id: str = Field(pattern=r"^[a-zA-Z0-9_.:-]{1,128}$")
+    finding_code: str = Field(pattern=r"^WATCH_[A-Z0-9_]{1,120}$")
+    minimum_confidence: float = Field(default=0.99, ge=0.9, le=1.0)
+    enabled: bool = False
+
+
+class ResponsePolicy(BaseModel):
+    tenant_id: str
+    finding_code: str
+    action: Literal["pause_task"] = "pause_task"
+    minimum_confidence: float
+    deterministic_only: bool = True
+    enabled: bool
+    updated_by: str
+    updated_at: datetime
+
+
+class TaskRecoveryRequest(BaseModel):
+    tenant_id: str = Field(pattern=r"^[a-zA-Z0-9_.:-]{1,128}$")
+    note: str = Field(min_length=1, max_length=1000)
+
+
+class SessionRevocationRequest(BaseModel):
+    tenant_id: str = Field(pattern=r"^[a-zA-Z0-9_.:-]{1,128}$")
+    task_id: TraceId
+    session_id: TraceId
+    note: str = Field(min_length=1, max_length=1000)
 
 
 class LineageRecord(BaseModel):
@@ -506,3 +805,15 @@ class MCPManifestInspectionResult(BaseModel):
     accepted: bool
     inspected_at: datetime
     tools: list[MCPToolInspection]
+
+
+class OnboardingPolicyRequest(BaseModel):
+    agent_id: str = Field(pattern=r"^[a-zA-Z0-9_.:-]{1,128}$")
+    tools: list[dict[str, Any]] = Field(min_length=1, max_length=500)
+
+
+class OnboardingSnippetRequest(BaseModel):
+    framework: Literal["python", "openai-agents", "langgraph", "mcp"]
+    tool_name: str = Field(
+        default="search_knowledge", pattern=r"^[a-zA-Z0-9_.:-]{1,128}$"
+    )

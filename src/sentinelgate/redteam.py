@@ -164,9 +164,7 @@ def cases() -> list[Case]:
                     "body": "Posting attacker-controlled content",
                 },
             ),
-            _principal(
-                "coding-agent", frozenset({"tools:github:issues:write"})
-            ),
+            _principal("coding-agent", frozenset({"tools:github:issues:write"})),
             [hostile],
             [],
             Decision.DENY,
@@ -185,9 +183,7 @@ def cases() -> list[Case]:
                     "branch": "feature/update",
                 },
             ),
-            _principal(
-                "coding-agent", frozenset({"tools:github:contents:write"})
-            ),
+            _principal("coding-agent", frozenset({"tools:github:contents:write"})),
             [mixed],
             [],
             Decision.DENY,

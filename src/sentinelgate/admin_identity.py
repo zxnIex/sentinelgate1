@@ -16,6 +16,10 @@ class AdminIdentity:
     subject: str
     email: str | None
     roles: frozenset[str]
+    tenant_id: str | None = None
+    membership_role: str | None = None
+    session_id: str | None = None
+    csrf_digest: str | None = None
 
 
 class OIDCAdminVerifier:

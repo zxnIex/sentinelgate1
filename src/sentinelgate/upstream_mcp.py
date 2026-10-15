@@ -56,8 +56,10 @@ class UpstreamMCPManager:
             MCPManifestInspectionRequest(tools=tools),
             self.store,
         )
-        if not report.safe or not report.accepted or any(
-            item.status != "trusted" for item in report.tools
+        if (
+            not report.safe
+            or not report.accepted
+            or any(item.status != "trusted" for item in report.tools)
         ):
             raise UpstreamMCPError("MCP manifest failed integrity enforcement")
 
@@ -104,18 +106,14 @@ class UpstreamMCPManager:
                             )
                         ),
                         "max_input_classification": str(
-                            tool_overrides.get(
-                                "max_input_classification", "internal"
-                            )
+                            tool_overrides.get("max_input_classification", "internal")
                         ),
                         "classification_violation_action": str(
                             tool_overrides.get(
                                 "classification_violation_action", "deny"
                             )
                         ),
-                        "dlp_action": str(
-                            tool_overrides.get("dlp_action", "deny")
-                        ),
+                        "dlp_action": str(tool_overrides.get("dlp_action", "deny")),
                     }
                 )
             for key in (
@@ -137,10 +135,15 @@ class UpstreamMCPManager:
 
     def _handler(self, server_id: str, tool_name: str, config: dict[str, Any]):
         def invoke(arguments: dict[str, Any]) -> ToolResult:
-            response = self._post(config, {
-                "jsonrpc": "2.0", "id": "sentinelgate-call", "method": "tools/call",
-                "params": {"name": tool_name, "arguments": arguments},
-            })
+            response = self._post(
+                config,
+                {
+                    "jsonrpc": "2.0",
+                    "id": "sentinelgate-call",
+                    "method": "tools/call",
+                    "params": {"name": tool_name, "arguments": arguments},
+                },
+            )
             if "error" in response:
                 raise ToolExecutionError("Upstream MCP tool returned an error")
             result = response.get("result")
@@ -153,12 +156,16 @@ class UpstreamMCPManager:
                 classification=DataClassification(
                     str(config.get("output_classification", "internal"))
                 ),
-                labels=frozenset({
-                    "mcp_upstream", f"mcp_server:{server_id}",
-                    *[str(item) for item in config.get("output_labels", [])],
-                }),
+                labels=frozenset(
+                    {
+                        "mcp_upstream",
+                        f"mcp_server:{server_id}",
+                        *[str(item) for item in config.get("output_labels", [])],
+                    }
+                ),
                 sources=(f"mcp:{server_id}:{tool_name}",),
             )
+
         return invoke
 
     def _discover(
@@ -169,7 +176,9 @@ class UpstreamMCPManager:
         for page in range(20):
             request_id = f"sentinelgate-list-{page}"
             payload: dict[str, Any] = {
-                "jsonrpc": "2.0", "id": request_id, "method": "tools/list",
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "method": "tools/list",
             }
             if cursor is not None:
                 payload["params"] = {"cursor": cursor}
@@ -186,8 +195,14 @@ class UpstreamMCPManager:
             next_cursor = result.get("nextCursor")
             if next_cursor is None:
                 break
-            if not isinstance(next_cursor, str) or not next_cursor or next_cursor == cursor:
-                raise UpstreamMCPError("MCP server returned an invalid pagination cursor")
+            if (
+                not isinstance(next_cursor, str)
+                or not next_cursor
+                or next_cursor == cursor
+            ):
+                raise UpstreamMCPError(
+                    "MCP server returned an invalid pagination cursor"
+                )
             cursor = next_cursor
         else:
             raise UpstreamMCPError("MCP tools/list exceeded 20 pages")
@@ -209,7 +224,9 @@ class UpstreamMCPManager:
         if token_env:
             token = os.environ.get(str(token_env))
             if not token:
-                raise UpstreamMCPError("Configured MCP bearer-token environment variable is missing")
+                raise UpstreamMCPError(
+                    "Configured MCP bearer-token environment variable is missing"
+                )
             headers["Authorization"] = f"Bearer {token}"
         try:
             response = self.client.post(url, json=payload, headers=headers)
@@ -237,9 +254,14 @@ class UpstreamMCPManager:
             raise UpstreamMCPError("Unknown MCP upstream")
         url = str(config.get("url", ""))
         parsed = urlparse(url)
-        local = parsed.scheme == "http" and parsed.hostname in {"127.0.0.1", "localhost"}
+        local = parsed.scheme == "http" and parsed.hostname in {
+            "127.0.0.1",
+            "localhost",
+        }
         if parsed.scheme != "https" and not local:
-            raise UpstreamMCPError("MCP upstream must use HTTPS or local development HTTP")
+            raise UpstreamMCPError(
+                "MCP upstream must use HTTPS or local development HTTP"
+            )
         if parsed.username or parsed.password or parsed.fragment:
             raise UpstreamMCPError("MCP upstream URL is invalid")
         return config
@@ -285,7 +307,8 @@ def handle_upstream_mcp(
             definition = dict(definitions[runtime])
             definition["name"] = original
             definition.setdefault("_meta", {})["sentinelgate"] = {
-                "upstream": server_id, "runtime_name": runtime,
+                "upstream": server_id,
+                "runtime_name": runtime,
             }
             visible.append(definition)
         return _result(request_id, {"tools": visible})
@@ -296,7 +319,5 @@ def handle_upstream_mcp(
             return _error(request_id, -32602, "Unknown upstream tool")
         rewritten = dict(payload)
         rewritten["params"] = dict(params) | {"name": names[original]}
-        return handle_mcp(
-            rewritten, principal, service, forced_mcp_server_id=server_id
-        )
+        return handle_mcp(rewritten, principal, service, forced_mcp_server_id=server_id)
     return handle_mcp(payload, principal, service)

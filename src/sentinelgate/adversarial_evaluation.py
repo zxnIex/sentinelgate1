@@ -24,7 +24,11 @@ from sentinelgate.storage import Store
 
 
 def _arguments(field: str, value: str) -> dict[str, str]:
-    arguments = {"to": "security@example.com", "subject": "Security report", "body": "Safe body"}
+    arguments = {
+        "to": "security@example.com",
+        "subject": "Security report",
+        "body": "Safe body",
+    }
     arguments[field] = value
     return arguments
 
@@ -39,7 +43,11 @@ def run(path: Path | None = None) -> dict[str, object]:
         provenance = ProvenanceService(signer)
         service = GatewayService(
             PolicyEngine(root / "config" / "policies.json"),
-            Store(Path(directory) / "evaluation.db", "adversarial-audit", "adversarial-encryption-key-32"),
+            Store(
+                Path(directory) / "evaluation.db",
+                "adversarial-audit",
+                "adversarial-encryption-key-32",
+            ),
             provenance,
             demo_registry(root / "knowledge"),
         )
@@ -49,8 +57,10 @@ def run(path: Path | None = None) -> dict[str, object]:
                 case_number += 1
                 trace_id = f"adversarial-{case_number}"
                 principal = AgentPrincipal(
-                    agent_id=family["agent_id"], tenant_id="adversarial",
-                    scopes=frozenset(family["scopes"]), token_id=trace_id,
+                    agent_id=family["agent_id"],
+                    tenant_id="adversarial",
+                    scopes=frozenset(family["scopes"]),
+                    token_id=trace_id,
                     expires_at=utc_now() + timedelta(hours=1),
                 )
                 arguments = _arguments(family["argument_field"], value)
@@ -59,21 +69,30 @@ def run(path: Path | None = None) -> dict[str, object]:
                 if structured:
                     attestation = provenance.attest_structured(
                         StructuredProvenanceAttestRequest(
-                            source_id=f"corpus:{case_number}", value=arguments,
+                            source_id=f"corpus:{case_number}",
+                            value=arguments,
                             trust=TrustLevel(structured["trust"]),
-                            classification=DataClassification(structured["classification"]),
-                            labels=structured["labels"], trace_id=trace_id,
+                            classification=DataClassification(
+                                structured["classification"]
+                            ),
+                            labels=structured["labels"],
+                            trace_id=trace_id,
                         ),
                         principal.tenant_id,
                     )
                     pointer = f"/{family['argument_field']}"
                     field_provenance[pointer] = [
-                        FieldProvenanceReference(token=attestation.token, source_pointer=pointer)
+                        FieldProvenanceReference(
+                            token=attestation.token, source_pointer=pointer
+                        )
                     ]
                 decision = service.evaluate(
                     ToolCallRequest(
-                        user_id="adversarial", tool_name=family["tool"], arguments=arguments,
-                        trace_id=trace_id, field_provenance=field_provenance,
+                        user_id="adversarial",
+                        tool_name=family["tool"],
+                        arguments=arguments,
+                        trace_id=trace_id,
+                        field_provenance=field_provenance,
                     ),
                     principal,
                     side_effects=False,

@@ -19,7 +19,7 @@ def run(iterations: int = 2000) -> dict[str, object]:
     corpus = root / "config" / "evaluation_corpus.json"
     return {
         "generated_at": datetime.now(UTC).isoformat(),
-        "sentinelgate_version": "0.11.0",
+        "sentinelgate_version": "0.17.0",
         "environment": {
             "python": platform.python_version(),
             "platform": platform.platform(),
@@ -31,7 +31,9 @@ def run(iterations: int = 2000) -> dict[str, object]:
         },
         "performance": run_performance(iterations),
         "regression_conformance": run_evaluation(corpus),
-        "adversarial_probes": run_adversarial(root / "config" / "adversarial_corpus.json"),
+        "adversarial_probes": run_adversarial(
+            root / "config" / "adversarial_corpus.json"
+        ),
         "resilience": run_resilience(),
         "limitations": [
             "Local policy-path latency excludes network and connector latency.",

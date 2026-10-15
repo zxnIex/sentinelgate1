@@ -99,7 +99,9 @@ class KnowledgeBase:
                 for item in metadata.get("labels", "").split(",")
                 if item.strip()
             }
-            invalid_labels = {item for item in raw_labels if not LABEL_PATTERN.fullmatch(item)}
+            invalid_labels = {
+                item for item in raw_labels if not LABEL_PATTERN.fullmatch(item)
+            }
             if invalid_labels:
                 # Connector metadata becomes signed provenance, so malformed labels
                 # must never pass through as an unvalidated token claim.
@@ -111,7 +113,9 @@ class KnowledgeBase:
             documents.append(
                 KnowledgeDocument(
                     source=resolved.relative_to(self.root).as_posix(),
-                    title=metadata.get("title", resolved.stem.replace("-", " ").title()),
+                    title=metadata.get(
+                        "title", resolved.stem.replace("-", " ").title()
+                    ),
                     content=content,
                     classification=classification,
                     trust=trust,

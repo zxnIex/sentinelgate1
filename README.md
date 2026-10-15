@@ -1,28 +1,76 @@
-# SentinelGate
+# SentinelGate v0.17 design-partner onboarding release
 
-> v0.11 is a developer-preview/design-partner release, not an independently validated
-> enterprise-production claim.
+> The Python package and API identifiers remain `sentinelgate` for upgrade compatibility.
+> Set `SENTINEL_PRODUCT_NAME` to a legally cleared display name. “Veyra” is not used because
+> preliminary clearance found conflicting software and AI uses; obtain professional clearance
+> before a public rename.
 
 SentinelGate is an identity-aware, fail-closed security gateway for custom tools used by autonomous AI agents. It mediates an action before application code executes it and returns one of three outcomes: `allow`, `deny`, or `require_approval`.
 
-Version 0.11 is a tested design-partner release—not a claim of production certification. Its narrow promise is:
+Version 0.17 is a tested design-partner release—not a claim of production certification or
+shared-public-SaaS readiness. Its narrow promise is:
 
 > Prevent unauthorized agent tool execution and unsafe information flow while preserving reviewable evidence for every decision.
 
-## What v0.11 adds
+## Fastest evaluation path
 
-- **SentinelGate Watch Alpha**, an optional monitor-only layer for spotting stuck, looping,
-  retrying and budget-exceeding agent tasks without giving the detector authority to execute
-  tools or contain agents.
-- Automatic observation of mediated gateway decisions, plus a small explicit event API for
-  model/token cost, progress and connector-result telemetry.
-- Evidence-backed findings for repeated calls, retry storms, repeated denials, excessive polling,
-  cyclic workflows, no-progress windows and runtime/tool/cost budgets.
-- A Watch console with task timelines, finding acknowledgement and a separate, human-triggered
-  recommendation path into SentinelGate Core containment.
-- A versioned regression simulator that includes both problematic and healthy workflows and
-  states clearly that it is not an independent efficacy benchmark.
-- PyJWT 2.15.1, removing the vulnerable 2.14.0 lock from the prior release.
+Windows PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
+.\.venv\Scripts\Activate.ps1
+sentinelgate serve --reload
+```
+
+macOS/Linux:
+
+```bash
+sh scripts/install.sh
+. .venv/bin/activate
+sentinelgate serve --reload
+```
+
+Then open `http://127.0.0.1:8000/console/onboarding`. The installer creates distinct local
+secrets, a fail-closed starter policy and ignored state paths. `sentinelgate doctor --url
+http://127.0.0.1:8000` diagnoses the source tree and running gateway without printing secrets.
+
+For PostgreSQL, run `sentinelgate init` once and then `docker compose --profile notifications up
+--build`. See [`docs/DESIGN_PARTNER_QUICKSTART.md`](docs/DESIGN_PARTNER_QUICKSTART.md).
+Existing installations should use
+[`docs/UPGRADE_0.17.0_WINDOWS.md`](docs/UPGRADE_0.17.0_WINDOWS.md) so `.env`, Git history, private
+keys and local data are preserved.
+
+## Framework adoption surface
+
+- `sentinelgate snippet openai-agents` creates an OpenAI Agents SDK wrapper example.
+- `sentinelgate snippet langgraph` creates a LangGraph/LangChain tool example.
+- `sentinelgate snippet mcp` creates an MCP gateway configuration.
+- `sentinelgate generate-policy --tools tools.json --agent-id my-agent` imports OpenAI/MCP
+  definitions and emits a conservative, review-required draft. It never activates a policy.
+- [`examples/protected_agent`](examples/protected_agent) is a complete OpenAI Responses
+  application in which every proposed tool call goes through the gateway.
+
+The local function adapters are pre-execution gates. Use `/v1/execute` with a governed connector
+when output provenance and output DLP must remain inside the controlled path. Never fall back to a
+direct connector when the gateway is unavailable.
+
+## Gate, Watch and Watch+
+
+- **Gate** evaluates identity, least privilege, field provenance, DLP, live MCP integrity and
+  policy before a controlled connector executes.
+- **Watch** correlates versioned task/session events and emits deterministic evidence for loops,
+  retry storms, undeclared tools, conflicting sessions, missing milestones, post-completion
+  activity and budget breaches.
+- **Watch+** adds opt-in metadata-only LLM analysis, a flight recorder, shadow threshold replay,
+  durable notifications and bounded intervention plans. LLM output cannot execute a response.
+- Watch+ can optionally auto-pause one task when an administrator explicitly enables a
+  high-confidence deterministic response policy. Credential revocation and task recovery remain
+  authenticated, bounded operations.
+- OpenTelemetry GenAI metadata can feed Watch without recording prompts or tool arguments.
+- Shadow behavioural baselines and least-privilege recommendations explain potential drift but
+  never change policy automatically.
+- A 120-workflow scripted-agent suite contains 90 development and 30 held-out workflows. It is
+  project-authored regression evidence, not independent validation.
 
 The v0.10 operational improvements remain included:
 
@@ -40,25 +88,49 @@ The v0.10 operational improvements remain included:
   identity instead of trusting a reviewer string supplied by the browser.
 
 The release still does **not** provide independent validation, a completed penetration test,
-customer deployment evidence, direct cloud-KMS cryptography, full MCP Streamable HTTP/SSE/OAuth,
-or broad connector coverage. Those remain explicit gates rather than hidden marketing claims.
+customer deployment evidence, direct cloud-KMS cryptography, full modern MCP/OAuth conformance,
+or broad connector coverage. The shared boundary includes opaque server-side browser sessions,
+CSRF protection,
+organisation memberships and roles, email-bound one-time invitations, versioned legal acceptance,
+account deactivation, reversible delayed tenant-deletion requests and account-action abuse limits.
+In `shared` mode, every older control-plane route that has not completed tenant-bound review is
+blocked with `SHARED_SAAS_ROUTE_NOT_HARDENED`; this is a fail-closed migration boundary, not a
+claim that the shared console is complete. Use dedicated or self-hosted mode for pilots.
 
-## SentinelGate Watch Alpha
+See [`docs/SAAS_BOUNDARY.md`](docs/SAAS_BOUNDARY.md) and
+[`docs/UPGRADE_0.17.0_WINDOWS.md`](docs/UPGRADE_0.17.0_WINDOWS.md). You do not need to install
+intermediate versions first.
+
+## SentinelGate Watch and Watch+ Intelligence Alpha
 
 Watch answers a different question from the firewall: not only “is this single action allowed?”
-but also “does this task appear stuck, cyclic or unexpectedly expensive?” Core remains the
-authorization boundary. Watch consumes metadata, emits findings and recommends review; it cannot
-execute a tool, change policy, revoke an identity or create containment by itself.
+but also “does this task appear stuck, cyclic or unexpectedly expensive?” Gate remains the
+authorization boundary. Watch consumes metadata and creates deterministic findings. Watch+ can
+selectively request a structured LLM assessment, but sends no prompt, tool arguments or tool result
+by default and never lets model output approve or execute a response.
 
 Gateway calls are observed automatically. Runtimes can add explicit task, progress and cost events
 through `POST /v1/watch/tasks` and `POST /v1/watch/events` using an agent token with `watch:write`.
-Operators review `/console/watch` or the authenticated `/v1/watch/*` endpoints. See
-[`docs/WATCH.md`](docs/WATCH.md) for the contract, privacy boundary and integration example.
+Operators review `/console/watch`, `/console/respond` or the authenticated APIs. See
+[`docs/WATCH_BETA.md`](docs/WATCH_BETA.md) for the contract, privacy boundary and integration example.
+
+## Commercial plans and billing
+
+The versioned server-side catalogue starts with Gate Free (10 agents), Gate (£49/month), Watch
+(£199/month), Watch+ (£499/month) and negotiated Enterprise deployments. Agent allowances are
+paired with monthly decision/event limits and retention boundaries; agent count alone is not a
+safe infrastructure-cost model. Stripe-hosted Checkout and the Stripe customer portal handle
+payment details. Signed, replay-protected webhooks update SentinelGate's local entitlement
+projection. Billing is disabled by default for self-hosted evaluation.
+
+These prices are an initial design-partner hypothesis, not validated willingness-to-pay evidence.
+See [`docs/BILLING.md`](docs/BILLING.md) and
+[`docs/WATCH_INTELLIGENCE.md`](docs/WATCH_INTELLIGENCE.md).
 
 Run the project-authored regression simulator with:
 
 ```bash
-python -m sentinelgate.watch_simulator --output evidence/watch-alpha-v0.11.json
+python -m sentinelgate.watch_evaluation --output evidence/watch-foundation-v0.15.json
 ```
 
 ## Enforcement path

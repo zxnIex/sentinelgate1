@@ -1,6 +1,7 @@
 """Public product page and dependency-free operator console shells."""
 
 import json
+from html import escape
 
 LANDING_HTML = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -8,7 +9,7 @@ LANDING_HTML = """<!doctype html>
 <title>SentinelGate — The security boundary for AI agents</title>
 <link rel="stylesheet" href="/assets/landing.css"><script src="/assets/landing.js" defer></script></head>
 <body><header class="site-nav"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true"></span><span>SentinelGate</span></a>
-<nav aria-label="Main navigation"><a href="#platform">Platform</a><a href="#proof">Evidence</a><a href="/learn">Learn</a><a href="/docs">API</a><a class="button ghost" href="/console/login">Sign in</a><a class="button primary" href="/console/onboarding">Start evaluation</a></nav></header>
+<nav aria-label="Main navigation"><a href="#platform">Platform</a><a href="#pricing">Pricing</a><a href="#proof">Evidence</a><a href="/learn">Learn</a><a href="/docs">API</a><a class="button ghost" href="/console/login">Sign in</a><a class="button primary" href="/console/onboarding">Start evaluation</a></nav></header>
 <main><section class="hero"><div class="hero-copy"><div class="eyebrow"><span class="pulse"></span> Runtime security for autonomous agents</div>
 <h1>Every agent action.<br><em>Through the gate.</em></h1>
 <p>Put identity, least privilege, field-level data lineage, approvals and containment directly on the path between an AI agent and the tools it can reach.</p>
@@ -20,12 +21,14 @@ LANDING_HTML = """<!doctype html>
 <div class="verdict-card"><div><small>DECISION</small><strong id="demo-verdict">Inspecting</strong></div><div><small>CONTROL</small><strong id="demo-control">Identity</strong></div><div class="signal" id="demo-signal"></div></div>
 <div class="demo-log" aria-live="polite"><span id="demo-log">Verifying signed agent identity…</span></div></div></section>
 <section class="proof-strip"><div><b>Field-aware</b><span>JSON-pointer lineage</span></div><div><b>Fail-closed</b><span>Unknown paths stop</span></div><div><b>Human-bound</b><span>One-time approvals</span></div><div><b>Measurable</b><span>Reproducible evidence</span></div></section>
+<section class="product-triad" aria-label="SentinelGate product layers"><article><small>01 · ENFORCE</small><h2>Gate</h2><p>Decide whether an agent action may proceed using identity, permissions, provenance, DLP and live tool integrity.</p><a href="/console">Open Gate →</a></article><article><small>02 · OBSERVE</small><h2>Watch</h2><p>Build task timelines and detect loops, retries, idle polling and budget breaches using deterministic evidence.</p><a href="/console/watch">Open Watch →</a></article><article><small>03 · UNDERSTAND & CONTROL</small><h2>Watch+</h2><p>Add selective LLM analysis, counterfactual replay and the smallest policy-bounded response.</p><a href="/console/respond">Open Watch+ →</a></article></section>
 <section id="platform" class="section"><div class="section-lead"><div class="eyebrow">THE ENFORCEMENT PLANE</div><h2>Security follows the action,<br>not just the prompt.</h2><p>Prompt filters see text. SentinelGate evaluates the identity, data history, destination, requested permission and live tool definition before code runs.</p></div>
 <div class="feature-grid"><article><span>01</span><h3>Agent identity</h3><p>Scoped, expiring workload tokens with inventory, revocation and tenant binding.</p></article><article><span>02</span><h3>Data-flow control</h3><p>Signed field provenance follows structured values across deterministic and LLM transformations.</p></article><article><span>03</span><h3>MCP firewall</h3><p>Baseline tool definitions and block description poisoning or definition drift inline.</p></article><article><span>04</span><h3>Human approval</h3><p>Freeze the exact request, notify a reviewer and permit one execution only.</p></article><article><span>05</span><h3>Bounded response</h3><p>Monitor, restrict, quarantine or revoke a compromised agent without arbitrary remediation.</p></article><article><span>06</span><h3>Operational evidence</h3><p>Tamper-evident decisions, replayable policy changes and honest benchmark boundaries.</p></article></div></section>
+<section id="pricing" class="section"><div class="section-lead"><div class="eyebrow">COMMERCIAL MODEL</div><h2>Start at the gate.<br>Pay when operations deepen.</h2><p>Agent allowances are paired with usage limits so a single runaway agent cannot create unlimited infrastructure cost.</p></div><div class="feature-grid"><article><span>£0</span><h3>Gate Free</h3><p>10 agents, 50k decisions/month and seven-day retention for evaluation.</p></article><article><span>£49</span><h3>Gate</h3><p>50 agents, 500k decisions/month and 30-day retention. Additional capacity starts at £3/agent/month.</p></article><article><span>£199</span><h3>Watch</h3><p>Deterministic monitoring, task timelines, baselines, notifications and one million Watch events/month.</p></article><article><span>£499</span><h3>Watch+</h3><p>Selective LLM analysis, replay and controlled response, with 500 semantic analyses/month.</p></article><article><span>Custom</span><h3>Enterprise</h3><p>Dedicated deployment, negotiated limits, OIDC/RBAC, support and isolation requirements.</p></article></div><p class="honesty">Prices are an initial design-partner hypothesis, not validated willingness-to-pay evidence.</p></section>
 <section id="proof" class="boundary"><div><div class="eyebrow">PROOF OVER PROMISES</div><h2>Built to be tested.</h2><p>Every published number carries its command, environment, policy digest and limitations. Missed attacks remain visible instead of being edited out.</p><a class="text-link" href="/console/benchmarks">Inspect benchmark evidence →</a></div>
 <div class="boundary-list"><article><i class="ok"></i><div><b>Protects mediated calls</b><p>Identity, policy, taint, approvals, MCP definitions and bounded connectors.</p></div></article><article><i class="warn"></i><div><b>Does not protect bypasses</b><p>Tools called outside SentinelGate remain outside its security boundary.</p></div></article><article><i class="warn"></i><div><b>No borrowed credibility</b><p>Project-authored corpora are regression evidence, not independent validation.</p></div></article></div></section>
-<section class="final-cta"><div><span class="eyebrow">DESIGN-PARTNER RELEASE v0.11.0</span><h2>Understand the boundary before deploying it.</h2><p>Watch the two-minute flow, follow the ten-minute setup and inspect the threat model.</p></div><a class="button primary" href="/learn">Open technical tour</a></section></main>
-<footer><a class="brand" href="/"><span class="brand-mark"></span>SentinelGate</a><span>Runtime controls for autonomous agents</span><span>v0.11.0</span></footer></body></html>"""
+<section class="final-cta"><div><span class="eyebrow">DESIGN-PARTNER RELEASE v0.17.0</span><h2>Understand the boundary before deploying it.</h2><p>Watch the two-minute flow, follow the ten-minute setup and inspect the threat model.</p></div><a class="button primary" href="/learn">Open technical tour</a></section></main>
+<footer><a class="brand" href="/"><span class="brand-mark"></span>SentinelGate</a><span>Gate · Watch · Watch+</span><span>v0.17.0 · Display brand configurable</span></footer></body></html>"""
 
 
 LEARN_HTML = """<!doctype html>
@@ -33,7 +36,7 @@ LEARN_HTML = """<!doctype html>
 <meta name="description" content="Understand, install and evaluate the SentinelGate agent security system.">
 <title>SentinelGate — Technical tour</title><link rel="stylesheet" href="/assets/landing.css"><link rel="stylesheet" href="/assets/learn.css"><script src="/assets/learn.js" defer></script></head>
 <body><header class="site-nav"><a class="brand" href="/"><span class="brand-mark"></span><span>SentinelGate</span></a><nav><a href="#demo">Demo</a><a href="#quickstart">Quickstart</a><a href="#boundary">Boundary</a><a href="#architecture">Architecture</a><a class="button ghost" href="/console/login">Sign in</a></nav></header>
-<main class="learn-shell"><section class="learn-hero"><div class="eyebrow">TECHNICAL TOUR · v0.11.0</div><h1>See exactly what happens<br>before an agent acts.</h1><p>SentinelGate mediates tool calls. It combines workload identity, policy, field provenance, live tool definitions and one-time approvals before a controlled executor can perform an action.</p><div class="hero-actions"><a class="button primary" href="#demo">Run the two-minute story</a><a class="button ghost" href="#quickstart">Install locally</a></div></section>
+<main class="learn-shell"><section class="learn-hero"><div class="eyebrow">TECHNICAL TOUR · v0.17.0</div><h1>See exactly what happens<br>before an agent acts.</h1><p>SentinelGate mediates tool calls. Gate enforces identity and data-flow policy, Watch detects abnormal task behaviour, and Watch+ adds selective analysis and bounded response.</p><div class="hero-actions"><a class="button primary" href="#demo">Run the two-minute story</a><a class="button ghost" href="#quickstart">Install locally</a></div></section>
 
 <section id="demo" class="tour-section"><div class="section-heading"><div><span class="eyebrow">01 · TWO-MINUTE DEMONSTRATION</span><h2>Follow one hostile transition.</h2></div><p>This is an explanatory simulation of the real enforcement path. It does not call a live connector or claim an attack was stopped on this browser page.</p></div>
 <div class="story-grid"><ol class="story-steps" id="story-steps"><li class="active"><button data-step="0"><b>1</b><span><strong>Read untrusted content</strong><small>A webpage returns an instruction-shaped payload.</small></span></button></li><li><button data-step="1"><b>2</b><span><strong>Carry provenance</strong><small>The body field inherits untrusted lineage.</small></span></button></li><li><button data-step="2"><b>3</b><span><strong>Attempt sensitive action</strong><small>The agent proposes an external email.</small></span></button></li><li><button data-step="3"><b>4</b><span><strong>Enforce at the sink</strong><small>Policy blocks the tainted body field.</small></span></button></li><li><button data-step="4"><b>5</b><span><strong>Inspect evidence</strong><small>The trace records lineage and reason codes.</small></span></button></li></ol>
@@ -41,12 +44,11 @@ LEARN_HTML = """<!doctype html>
 
 <section id="quickstart" class="tour-section"><div class="section-heading"><div><span class="eyebrow">02 · TEN-MINUTE INSTALLATION</span><h2>From clone to first decision.</h2></div><p>Use an isolated local deployment. These commands start PostgreSQL, the gateway and notification worker; they do not make the deployment production-ready.</p></div>
 <div class="quick-grid"><nav class="quick-nav" aria-label="Quickstart steps"><button class="active" data-panel="install">1. Prepare</button><button data-panel="start">2. Start</button><button data-panel="identity">3. Identity</button><button data-panel="safe">4. Safe call</button><button data-panel="hostile">5. Hostile call</button></nav>
-<div class="quick-panels"><article data-panel-content="install"><h3>Clone and configure</h3><pre><code>git clone YOUR_REPOSITORY_URL sentinelgate
-cd sentinelgate
-Copy-Item .env.example .env
-# Put distinct generated secrets in .env
-$env:POSTGRES_PASSWORD = "a-long-local-password"</code></pre><p>Keep <code>.env</code>, private keys and database files out of Git.</p></article>
-<article hidden data-panel-content="start"><h3>Start the governed stack</h3><pre><code>docker compose --profile notifications up --build</code></pre><p>Open <code>http://127.0.0.1:8000/console/onboarding</code>, sign in with the raw local admin token and confirm PostgreSQL and the worker are healthy.</p></article>
+<div class="quick-panels"><article data-panel-content="install"><h3>Install and verify</h3><pre><code>git clone YOUR_REPOSITORY_URL agent-control-plane
+cd agent-control-plane
+powershell -ExecutionPolicy Bypass -File .\\scripts\\install.ps1</code></pre><p>The installer creates distinct secrets, a conservative policy and ignored state paths. It preserves an existing <code>.env</code>.</p></article>
+<article hidden data-panel-content="start"><h3>Start the governed stack</h3><pre><code>docker compose --profile notifications up --build
+sentinelgate doctor --url http://127.0.0.1:8000</code></pre><p>Open <code>http://127.0.0.1:8000/console/onboarding</code>, sign in with the raw local admin token and confirm PostgreSQL and the worker are healthy.</p></article>
 <article hidden data-panel-content="identity"><h3>Issue least privilege</h3><pre><code>$headers = @{ Authorization = "Bearer $env:SENTINEL_ADMIN_TOKEN" }
 $body = @{
   agent_id = "research-agent"
@@ -65,19 +67,20 @@ Invoke-RestMethod -Method Post http://127.0.0.1:8000/v1/tokens/agents `
 
 <section id="architecture" class="tour-section"><div class="section-heading"><div><span class="eyebrow">04 · ARCHITECTURE</span><h2>The proposed action stays separate from execution.</h2></div><a class="text-link" href="/assets/sentinelgate-threat-model.md">Download threat model →</a></div><div class="architecture-map" role="img" aria-label="Agent request passes through identity, policy and provenance evaluation, then approval or denial, before a controlled executor reaches a tool"><div class="arch-box source"><small>UNTRUSTED INPUT</small><strong>Agent proposes call</strong></div><div class="arch-arrow">→</div><div class="arch-core"><small>SENTINELGATE DECISION</small><strong>Identity · policy · provenance · MCP integrity</strong><span>allow · deny · approval · containment</span></div><div class="arch-arrow">→</div><div class="arch-box"><small>CONTROLLED PATH</small><strong>Executor → tool</strong></div><div class="arch-store"><small>DURABLE EVIDENCE</small><strong>PostgreSQL · audit chain · outbox</strong></div></div></section>
 
-<section class="final-cta"><div><span class="eyebrow">NEXT STEP</span><h2>Mediate one disposable workflow.</h2><p>Start with non-production data. Measure installation time, false positives and every bypass you find.</p></div><a class="button primary" href="/console/onboarding">Launch evaluation</a></section></main><footer><a class="brand" href="/"><span class="brand-mark"></span>SentinelGate</a><span>Runtime controls for autonomous agents</span><span>v0.11.0 · Watch Alpha</span></footer></body></html>"""
+<section class="final-cta"><div><span class="eyebrow">NEXT STEP</span><h2>Mediate one disposable workflow.</h2><p>Start with non-production data. Measure installation time, false positives and every bypass you find.</p></div><a class="button primary" href="/console/onboarding">Launch evaluation</a></section></main><footer><a class="brand" href="/"><span class="brand-mark"></span>SentinelGate</a><span>Gate · Watch · Watch+</span><span>v0.17.0 · Display brand configurable</span></footer></body></html>"""
 
 
 _CONSOLE_TEMPLATE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SentinelGate Control Plane</title><link rel="stylesheet" href="/assets/console.css?v=0.11.0"><link rel="stylesheet" href="/assets/watch.css?v=0.11.0"><link rel="stylesheet" href="/assets/auth.css?v=0.11.0">
-<script src="/assets/console.js?v=0.11.0" defer></script></head>
+<title>Agent Control Plane</title><link rel="stylesheet" href="/assets/console.css?v=0.17.0"><link rel="stylesheet" href="/assets/watch.css?v=0.17.0"><link rel="stylesheet" href="/assets/auth.css?v=0.17.0">
+<script src="/assets/console.js?v=0.17.0" defer></script></head>
 <body data-section="__SECTION__"><div class="app-shell"><aside class="sidebar"><a class="brand" href="/"><span class="brand-mark"></span><span>SentinelGate</span></a>
 <nav><div class="nav-label">GET STARTED</div><a data-page="onboarding" href="/console/onboarding"><i>01</i>Onboarding</a>
-<div class="nav-label">OPERATE</div><a data-page="overview" href="/console"><i>02</i>Overview</a><a data-page="watch" href="/console/watch"><i>03</i>Watch</a><a data-page="traces" href="/console/traces"><i>04</i>Data flows</a><a data-page="approvals" href="/console/approvals"><i>05</i>Approvals</a><a data-page="agents" href="/console/agents"><i>06</i>Agents</a><a data-page="incidents" href="/console/incidents"><i>07</i>Incidents</a>
-<div class="nav-label">CONFIGURE</div><a data-page="connectors" href="/console/connectors"><i>08</i>Connectors</a><a data-page="mcp-security" href="/console/mcp-security"><i>09</i>MCP security</a><a data-page="policy" href="/console/policy"><i>10</i>Policy lab</a>
-<div class="nav-label">VERIFY</div><a data-page="benchmarks" href="/console/benchmarks"><i>11</i>Benchmarks</a><a data-page="system" href="/console/system"><i>12</i>System health</a><a data-page="audit" href="/console/audit"><i>13</i>Audit log</a><a data-page="reports" href="/console/reports"><i>14</i>Reports</a></nav>
-<div class="sidebar-foot"><span class="status-dot"></span><span>v0.11.0 Watch Alpha</span></div></aside>
+<div class="nav-label module gate">GATE · ENFORCE</div><a data-page="overview" href="/console"><i>02</i>Gate overview</a><a data-page="traces" href="/console/traces"><i>03</i>Data flows</a><a data-page="approvals" href="/console/approvals"><i>04</i>Approvals</a><a data-page="agents" href="/console/agents"><i>05</i>Agents</a><a data-page="mcp-security" href="/console/mcp-security"><i>06</i>MCP security</a><a data-page="connectors" href="/console/connectors"><i>07</i>Connectors</a>
+<div class="nav-label module watch">WATCH · DETECT</div><a data-page="watch" href="/console/watch"><i>08</i>Runtime intelligence</a><a data-page="benchmarks" href="/console/benchmarks"><i>09</i>Evaluation</a>
+<div class="nav-label module respond">WATCH+ · INTELLIGENCE & RESPONSE</div><a data-page="respond" href="/console/respond"><i>10</i>Intelligence & response</a><a data-page="incidents" href="/console/incidents"><i>11</i>Incidents</a><a data-page="policy" href="/console/policy"><i>12</i>Replay lab</a>
+<div class="nav-label">EVIDENCE & SYSTEM</div><a data-page="billing" href="/console/billing"><i>13</i>Plan & usage</a><a data-page="system" href="/console/system"><i>14</i>System health</a><a data-page="audit" href="/console/audit"><i>15</i>Audit log</a><a data-page="reports" href="/console/reports"><i>16</i>Reports</a></nav>
+<div class="sidebar-foot"><span class="status-dot"></span><span>v0.17.0 design-partner release</span></div></aside>
 <main><header class="topbar"><button id="menu-toggle" class="icon-button" aria-label="Toggle navigation">☰</button><div><p class="breadcrumb">CONTROL PLANE / <span id="crumb"></span></p><h1 id="title"></h1></div>
 <div class="session"><div class="runtime-state"><span id="mode-dot"></span><div><b id="mode">Disconnected</b><small id="session-name">No active session</small></div></div><button class="button secondary" data-action="open-login">Sign in</button><button class="icon-button" data-action="logout" aria-label="Sign out">↗</button></div></header>
 <div class="page"><div id="error" class="alert error" role="alert"></div><div id="view"></div></div></main></div>
@@ -86,5 +89,11 @@ _CONSOLE_TEMPLATE = """<!doctype html>
 <div id="toast" class="toast" role="status"></div></body></html>"""
 
 
-def console_page(section: str) -> str:
-    return _CONSOLE_TEMPLATE.replace("__SECTION__", json.dumps(section)[1:-1])
+def branded_page(page: str, product_name: str) -> str:
+    """Apply a display-only brand without changing stable API/package identifiers."""
+    return page.replace("SentinelGate", escape(product_name))
+
+
+def console_page(section: str, product_name: str = "SentinelGate") -> str:
+    page = _CONSOLE_TEMPLATE.replace("__SECTION__", json.dumps(section)[1:-1])
+    return branded_page(page, product_name)

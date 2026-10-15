@@ -1,4 +1,7 @@
-# SentinelGate Watch Alpha
+# SentinelGate Watch Alpha (v0.11 legacy)
+
+This document describes the v0.11 compatibility surface. New integrations should use
+[`WATCH_BETA.md`](WATCH_BETA.md), event schema 1.0 and the Gate/Watch/Respond workflow.
 
 Watch detects signs that an agent task is stuck, looping, retrying or exceeding an explicit budget.
 It complements SentinelGate Core; it does not replace the firewall or authorize an action.

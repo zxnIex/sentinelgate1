@@ -39,7 +39,19 @@ from sentinelgate.models import (
     ContainmentRecord,
     DataClassification,
     Incident,
+    InterventionAction,
+    InterventionPlan,
     LineageRecord,
+    MembershipRole,
+    OperatorAccount,
+    OperatorSession,
+    Organisation,
+    OrganisationStatus,
+    ProductPlan,
+    ResponsePolicy,
+    TenantInvitation,
+    TenantMembership,
+    TenantSubscription,
     ToolCallRequest,
     TraceSummary,
     TrustLevel,
@@ -47,6 +59,7 @@ from sentinelgate.models import (
     WatchEventRequest,
     WatchFinding,
     WatchFindingAction,
+    WatchIntelligenceResult,
     WatchProfile,
     WatchSummary,
     WatchTaskCreateRequest,
@@ -96,7 +109,9 @@ class Store:
         self._pool = None
         if self._postgres:
             if ConnectionPool is None:
-                raise RuntimeError("PostgreSQL support requires psycopg and psycopg-pool")
+                raise RuntimeError(
+                    "PostgreSQL support requires psycopg and psycopg-pool"
+                )
             database = database.replace("postgresql+psycopg://", "postgresql://", 1)
             self._pool = ConnectionPool(
                 database,
@@ -188,6 +203,11 @@ class Store:
                 );
                 CREATE INDEX IF NOT EXISTS ix_rate_events_agent_time
                     ON rate_events(tenant_id, agent_id, created_at);
+                CREATE TABLE IF NOT EXISTS account_rate_events (
+                    subject TEXT NOT NULL, action TEXT NOT NULL, created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS ix_account_rate_events_subject_time
+                    ON account_rate_events(subject, action, created_at);
                 CREATE TABLE IF NOT EXISTS violations (
                     tenant_id TEXT NOT NULL, agent_id TEXT NOT NULL, severity TEXT NOT NULL,
                     reason TEXT NOT NULL, created_at TEXT NOT NULL
@@ -287,9 +307,11 @@ class Store:
                     failed INTEGER NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS watch_tasks (
-                    task_id TEXT NOT NULL, tenant_id TEXT NOT NULL, agent_id TEXT NOT NULL,
+                    task_id TEXT NOT NULL, workflow_id TEXT NOT NULL,
+                    tenant_id TEXT NOT NULL, agent_id TEXT NOT NULL,
                     description TEXT NOT NULL, profile TEXT NOT NULL,
                     expected_tools_json TEXT NOT NULL, success_criteria_json TEXT NOT NULL,
+                    allow_multi_session INTEGER NOT NULL DEFAULT 0,
                     max_runtime_seconds INTEGER NOT NULL, max_tool_calls INTEGER NOT NULL,
                     max_cost_usd REAL NOT NULL, status TEXT NOT NULL,
                     event_count INTEGER NOT NULL, estimated_cost_usd REAL NOT NULL,
@@ -300,9 +322,10 @@ class Store:
                     ON watch_tasks(tenant_id, agent_id, status, updated_at);
                 CREATE TABLE IF NOT EXISTS watch_events (
                     id TEXT PRIMARY KEY, task_id TEXT NOT NULL, tenant_id TEXT NOT NULL,
-                    agent_id TEXT NOT NULL, event_type TEXT NOT NULL, tool_name TEXT,
+                    agent_id TEXT NOT NULL, schema_version TEXT NOT NULL DEFAULT '1.0',
+                    session_id TEXT, event_type TEXT NOT NULL, tool_name TEXT,
                     outcome TEXT, error_code TEXT, call_fingerprint TEXT,
-                    progress_signal TEXT, input_tokens INTEGER NOT NULL,
+                    progress_signal TEXT, milestone_id TEXT, input_tokens INTEGER NOT NULL,
                     output_tokens INTEGER NOT NULL, estimated_cost_usd REAL NOT NULL,
                     duration_ms REAL, created_at TEXT NOT NULL
                 );
@@ -316,35 +339,174 @@ class Store:
                     status TEXT NOT NULL, occurrences INTEGER NOT NULL,
                     first_seen TEXT NOT NULL, last_seen TEXT NOT NULL,
                     resolved_at TEXT, reviewer TEXT, note TEXT NOT NULL,
+                    detector_type TEXT NOT NULL DEFAULT 'deterministic', analysis_id TEXT,
                     UNIQUE(tenant_id, task_id, code)
                 );
                 CREATE INDEX IF NOT EXISTS ix_watch_findings_status_time
                     ON watch_findings(tenant_id, status, last_seen);
+                CREATE TABLE IF NOT EXISTS intervention_plans (
+                    id TEXT PRIMARY KEY, finding_id TEXT NOT NULL UNIQUE,
+                    tenant_id TEXT NOT NULL, agent_id TEXT NOT NULL, task_id TEXT NOT NULL,
+                    action TEXT NOT NULL, rationale TEXT NOT NULL,
+                    parameters_json TEXT NOT NULL, status TEXT NOT NULL,
+                    created_at TEXT NOT NULL, resolved_at TEXT, reviewer TEXT, note TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS ix_intervention_plans_status_time
+                    ON intervention_plans(tenant_id, status, created_at);
+                CREATE TABLE IF NOT EXISTS tenant_subscriptions (
+                    tenant_id TEXT PRIMARY KEY, plan TEXT NOT NULL, status TEXT NOT NULL,
+                    stripe_customer_id TEXT, stripe_subscription_id TEXT,
+                    extra_agents INTEGER NOT NULL DEFAULT 0, current_period_end TEXT,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS ix_subscription_customer
+                    ON tenant_subscriptions(stripe_customer_id);
+                CREATE TABLE IF NOT EXISTS billing_events (
+                    event_id TEXT PRIMARY KEY, event_type TEXT NOT NULL,
+                    status TEXT NOT NULL, error TEXT, received_at TEXT NOT NULL,
+                    completed_at TEXT
+                );
+                CREATE TABLE IF NOT EXISTS watch_intelligence_analyses (
+                    id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, agent_id TEXT NOT NULL,
+                    task_id TEXT NOT NULL, model TEXT NOT NULL, prompt_version TEXT NOT NULL,
+                    input_digest TEXT NOT NULL, result_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS ix_watch_intelligence_tenant_time
+                    ON watch_intelligence_analyses(tenant_id, created_at);
+                CREATE TABLE IF NOT EXISTS watch_session_credentials (
+                    tenant_id TEXT NOT NULL, agent_id TEXT NOT NULL, task_id TEXT NOT NULL,
+                    session_id TEXT NOT NULL, token_id TEXT NOT NULL, first_seen TEXT NOT NULL,
+                    last_seen TEXT NOT NULL,
+                    PRIMARY KEY(tenant_id, task_id, session_id, token_id)
+                );
+                CREATE TABLE IF NOT EXISTS response_policies (
+                    tenant_id TEXT NOT NULL, finding_code TEXT NOT NULL,
+                    action TEXT NOT NULL, minimum_confidence REAL NOT NULL,
+                    deterministic_only INTEGER NOT NULL, enabled INTEGER NOT NULL,
+                    updated_by TEXT NOT NULL, updated_at TEXT NOT NULL,
+                    PRIMARY KEY(tenant_id, finding_code)
+                );
+                CREATE TABLE IF NOT EXISTS operator_accounts (
+                    subject TEXT PRIMARY KEY, email TEXT, status TEXT NOT NULL,
+                    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS organisations (
+                    tenant_id TEXT PRIMARY KEY, name TEXT NOT NULL, status TEXT NOT NULL,
+                    created_by TEXT NOT NULL, created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS tenant_memberships (
+                    tenant_id TEXT NOT NULL, subject TEXT NOT NULL, email TEXT,
+                    role TEXT NOT NULL, status TEXT NOT NULL,
+                    created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                    PRIMARY KEY(tenant_id, subject)
+                );
+                CREATE INDEX IF NOT EXISTS ix_membership_subject
+                    ON tenant_memberships(subject, status, tenant_id);
+                CREATE TABLE IF NOT EXISTS tenant_invitations (
+                    id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, email TEXT NOT NULL,
+                    role TEXT NOT NULL, token_digest TEXT NOT NULL UNIQUE,
+                    status TEXT NOT NULL, created_by TEXT NOT NULL,
+                    created_at TEXT NOT NULL, expires_at TEXT NOT NULL,
+                    accepted_at TEXT, accepted_by TEXT
+                );
+                CREATE INDEX IF NOT EXISTS ix_invitation_tenant_status
+                    ON tenant_invitations(tenant_id, status, expires_at);
+                CREATE TABLE IF NOT EXISTS operator_sessions (
+                    id TEXT PRIMARY KEY, subject TEXT NOT NULL, email TEXT,
+                    token_digest TEXT NOT NULL UNIQUE, csrf_digest TEXT NOT NULL,
+                    created_at TEXT NOT NULL, expires_at TEXT NOT NULL,
+                    last_seen_at TEXT NOT NULL, revoked_at TEXT
+                );
+                CREATE INDEX IF NOT EXISTS ix_operator_session_subject
+                    ON operator_sessions(subject, expires_at, revoked_at);
+                CREATE TABLE IF NOT EXISTS legal_acceptances (
+                    id TEXT PRIMARY KEY, subject TEXT NOT NULL,
+                    terms_version TEXT NOT NULL, privacy_version TEXT NOT NULL,
+                    accepted_at TEXT NOT NULL, source_ip_digest TEXT,
+                    user_agent_digest TEXT
+                );
+                CREATE INDEX IF NOT EXISTS ix_legal_acceptance_subject
+                    ON legal_acceptances(subject, accepted_at);
+                CREATE TABLE IF NOT EXISTS tenant_deletion_requests (
+                    tenant_id TEXT PRIMARY KEY, requested_by TEXT NOT NULL,
+                    reason TEXT NOT NULL, status TEXT NOT NULL,
+                    requested_at TEXT NOT NULL, execute_after TEXT NOT NULL,
+                    cancelled_at TEXT, completed_at TEXT
+                );
                 """
             )
             if self._postgres:
-                lineage_columns = {
-                    row["column_name"]
-                    for row in db.execute(
-                        "SELECT column_name FROM information_schema.columns "
-                        "WHERE table_schema='public' AND table_name='lineage_events'"
-                    ).fetchall()
-                }
+
+                def table_columns(table: str) -> set[str]:
+                    return {
+                        row["column_name"]
+                        for row in db.execute(
+                            "SELECT column_name FROM information_schema.columns "
+                            "WHERE table_schema='public' AND table_name=?",
+                            (table,),
+                        ).fetchall()
+                    }
+
+                lineage_columns = table_columns("lineage_events")
             else:
-                lineage_columns = {
-                    row["name"]
-                    for row in db.execute("PRAGMA table_info(lineage_events)")
-                }
+
+                def table_columns(table: str) -> set[str]:
+                    return {
+                        row["name"] for row in db.execute(f"PRAGMA table_info({table})")
+                    }
+
+                lineage_columns = table_columns("lineage_events")
             if "field_taint_json" not in lineage_columns:
                 db.execute(
                     "ALTER TABLE lineage_events ADD COLUMN field_taint_json "
                     "TEXT NOT NULL DEFAULT '{}'"
                 )
+            task_columns = table_columns("watch_tasks")
+            if "allow_multi_session" not in task_columns:
+                db.execute(
+                    "ALTER TABLE watch_tasks ADD COLUMN allow_multi_session "
+                    "INTEGER NOT NULL DEFAULT 0"
+                )
+            if "workflow_id" not in task_columns:
+                db.execute(
+                    "ALTER TABLE watch_tasks ADD COLUMN workflow_id TEXT NOT NULL DEFAULT ''"
+                )
+                db.execute(
+                    "UPDATE watch_tasks SET workflow_id=task_id WHERE workflow_id='' "
+                )
+            event_columns = table_columns("watch_events")
+            for column, definition in (
+                ("schema_version", "TEXT NOT NULL DEFAULT '1.0'"),
+                ("session_id", "TEXT"),
+                ("milestone_id", "TEXT"),
+            ):
+                if column not in event_columns:
+                    db.execute(
+                        f"ALTER TABLE watch_events ADD COLUMN {column} {definition}"
+                    )
+            finding_columns = table_columns("watch_findings")
+            if "detector_type" not in finding_columns:
+                db.execute(
+                    "ALTER TABLE watch_findings ADD COLUMN detector_type "
+                    "TEXT NOT NULL DEFAULT 'deterministic'"
+                )
+            if "analysis_id" not in finding_columns:
+                db.execute("ALTER TABLE watch_findings ADD COLUMN analysis_id TEXT")
             for version in (
                 "0001_initial",
                 "0002_field_taint",
                 "0003_durable_outbox",
                 "0004_watch_alpha",
+                "0005_watch_beta_schema",
+                "0006_bounded_response",
+                "0007_multi_agent_workflows",
+                "0008_commercial_entitlements",
+                "0009_watch_intelligence",
+                "0010_bounded_auto_response",
+                "0011_saas_accounts_and_tenant_boundary",
+                "0012_account_abuse_controls",
             ):
                 db.execute(
                     "INSERT INTO schema_migrations VALUES (?, ?) ON CONFLICT DO NOTHING",
@@ -362,21 +524,23 @@ class Store:
         with self._connect() as db:
             db.execute(
                 """INSERT INTO watch_tasks (
-                       task_id, tenant_id, agent_id, description, profile,
-                       expected_tools_json, success_criteria_json,
+                       task_id, workflow_id, tenant_id, agent_id, description, profile,
+                       expected_tools_json, success_criteria_json, allow_multi_session,
                        max_runtime_seconds, max_tool_calls, max_cost_usd,
                        status, event_count, estimated_cost_usd,
                        created_at, updated_at, completed_at
-                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', 0, 0, ?, ?, NULL)
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', 0, 0, ?, ?, NULL)
                    ON CONFLICT(tenant_id, task_id) DO NOTHING""",
                 (
                     request.task_id,
+                    request.workflow_id or request.task_id,
                     principal.tenant_id,
                     principal.agent_id,
                     request.description,
                     request.profile.value,
                     json.dumps(sorted(set(request.expected_tools))),
                     json.dumps(request.success_criteria),
+                    int(request.allow_multi_session),
                     request.max_runtime_seconds,
                     request.max_tool_calls,
                     request.max_cost_usd,
@@ -411,6 +575,7 @@ class Store:
         tenant_id: str | None = None,
         agent_id: str | None = None,
         status: str | None = None,
+        workflow_id: str | None = None,
     ) -> list[WatchTaskRecord]:
         filters: list[str] = []
         params: list[Any] = []
@@ -418,6 +583,7 @@ class Store:
             ("tenant_id", tenant_id),
             ("agent_id", agent_id),
             ("status", status),
+            ("workflow_id", workflow_id),
         ):
             if value:
                 filters.append(f"{column}=?")
@@ -454,20 +620,26 @@ class Store:
         )
         with self._connect() as db:
             db.execute(
-                """INSERT INTO watch_events VALUES (
-                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-                   )""",
+                """INSERT INTO watch_events (
+                       id, task_id, tenant_id, agent_id, schema_version, session_id,
+                       event_type, tool_name, outcome, error_code, call_fingerprint,
+                       progress_signal, milestone_id, input_tokens, output_tokens,
+                       estimated_cost_usd, duration_ms, created_at
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     event.id,
                     event.task_id,
                     event.tenant_id,
                     event.agent_id,
+                    event.schema_version,
+                    event.session_id,
                     event.event_type.value,
                     event.tool_name,
                     event.outcome,
                     event.error_code,
                     event.call_fingerprint,
                     event.progress_signal,
+                    event.milestone_id,
                     event.input_tokens,
                     event.output_tokens,
                     event.estimated_cost_usd,
@@ -492,6 +664,24 @@ class Store:
                     event.task_id,
                 ),
             )
+            if event.session_id:
+                db.execute(
+                    """INSERT INTO watch_session_credentials (
+                           tenant_id, agent_id, task_id, session_id, token_id,
+                           first_seen, last_seen
+                       ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                       ON CONFLICT(tenant_id, task_id, session_id, token_id)
+                       DO UPDATE SET last_seen=excluded.last_seen""",
+                    (
+                        event.tenant_id,
+                        event.agent_id,
+                        event.task_id,
+                        event.session_id,
+                        principal.token_id,
+                        event.created_at.isoformat(),
+                        event.created_at.isoformat(),
+                    ),
+                )
         return event
 
     def list_watch_events(
@@ -533,8 +723,13 @@ class Store:
         now = utc_now().isoformat()
         with self._connect() as db:
             db.execute(
-                """INSERT INTO watch_findings VALUES (
-                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', 1, ?, ?, NULL, NULL, ''
+                """INSERT INTO watch_findings (
+                       id, tenant_id, agent_id, task_id, code, severity, confidence,
+                       summary, evidence_json, recommended_action, status, occurrences,
+                       first_seen, last_seen, resolved_at, reviewer, note,
+                       detector_type, analysis_id
+                   ) VALUES (
+                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', 1, ?, ?, NULL, NULL, '', ?, ?
                    ) ON CONFLICT(id) DO UPDATE SET
                        severity=excluded.severity,
                        confidence=excluded.confidence,
@@ -542,7 +737,9 @@ class Store:
                        evidence_json=excluded.evidence_json,
                        recommended_action=excluded.recommended_action,
                        status='open', occurrences=watch_findings.occurrences+1,
-                       last_seen=excluded.last_seen, resolved_at=NULL""",
+                       last_seen=excluded.last_seen, resolved_at=NULL,
+                       detector_type=excluded.detector_type,
+                       analysis_id=excluded.analysis_id""",
                 (
                     finding.id,
                     finding.tenant_id,
@@ -556,6 +753,8 @@ class Store:
                     finding.recommended_action,
                     finding.first_seen.isoformat(),
                     now,
+                    finding.detector_type,
+                    finding.analysis_id,
                 ),
             )
             row = db.execute(
@@ -607,7 +806,190 @@ class Store:
             row = db.execute(
                 "SELECT * FROM watch_findings WHERE id=?", (finding_id,)
             ).fetchone()
-        return self._watch_finding_from_row(row) if cursor.rowcount == 1 and row else None
+        return (
+            self._watch_finding_from_row(row) if cursor.rowcount == 1 and row else None
+        )
+
+    def get_watch_finding(self, finding_id: str) -> WatchFinding | None:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT * FROM watch_findings WHERE id=?", (finding_id,)
+            ).fetchone()
+        return self._watch_finding_from_row(row) if row else None
+
+    def update_watch_task_status(
+        self, tenant_id: str, task_id: str, status: str
+    ) -> WatchTaskRecord | None:
+        if status not in {"active", "paused", "completed", "failed", "cancelled"}:
+            raise ValueError("Unsupported Watch task status")
+        now = utc_now().isoformat()
+        terminal = now if status in {"completed", "failed", "cancelled"} else None
+        with self._connect() as db:
+            cursor = db.execute(
+                """UPDATE watch_tasks SET status=?, updated_at=?,
+                       completed_at=COALESCE(?, completed_at)
+                   WHERE tenant_id=? AND task_id=?""",
+                (status, now, terminal, tenant_id, task_id),
+            )
+            row = db.execute(
+                "SELECT * FROM watch_tasks WHERE tenant_id=? AND task_id=?",
+                (tenant_id, task_id),
+            ).fetchone()
+        return self._watch_task_from_row(row) if cursor.rowcount == 1 and row else None
+
+    def create_intervention_plan(
+        self,
+        finding: WatchFinding,
+        action: InterventionAction,
+        rationale: str,
+        parameters: dict[str, Any],
+    ) -> InterventionPlan:
+        now = utc_now()
+        plan = InterventionPlan(
+            id=str(uuid4()),
+            finding_id=finding.id,
+            tenant_id=finding.tenant_id,
+            agent_id=finding.agent_id,
+            task_id=finding.task_id,
+            action=action,
+            rationale=rationale,
+            parameters=parameters,
+            status="proposed",
+            created_at=now,
+        )
+        with self._connect() as db:
+            db.execute(
+                """INSERT INTO intervention_plans (
+                       id, finding_id, tenant_id, agent_id, task_id, action,
+                       rationale, parameters_json, status, created_at,
+                       resolved_at, reviewer, note
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'proposed', ?, NULL, NULL, '')
+                   ON CONFLICT(finding_id) DO NOTHING""",
+                (
+                    plan.id,
+                    plan.finding_id,
+                    plan.tenant_id,
+                    plan.agent_id,
+                    plan.task_id,
+                    plan.action.value,
+                    plan.rationale,
+                    json.dumps(plan.parameters),
+                    plan.created_at.isoformat(),
+                ),
+            )
+            row = db.execute(
+                "SELECT * FROM intervention_plans WHERE finding_id=?",
+                (finding.id,),
+            ).fetchone()
+        return self._intervention_from_row(row)
+
+    def get_intervention_plan(self, plan_id: str) -> InterventionPlan | None:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT * FROM intervention_plans WHERE id=?", (plan_id,)
+            ).fetchone()
+        return self._intervention_from_row(row) if row else None
+
+    def list_intervention_plans(
+        self,
+        limit: int = 100,
+        tenant_id: str | None = None,
+        task_id: str | None = None,
+        status: str | None = None,
+    ) -> list[InterventionPlan]:
+        filters: list[str] = []
+        params: list[Any] = []
+        for column, value in (
+            ("tenant_id", tenant_id),
+            ("task_id", task_id),
+            ("status", status),
+        ):
+            if value:
+                filters.append(f"{column}=?")
+                params.append(value)
+        query = "SELECT * FROM intervention_plans"
+        if filters:
+            query += " WHERE " + " AND ".join(filters)
+        query += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+        with self._connect() as db:
+            rows = db.execute(query, tuple(params)).fetchall()
+        return [self._intervention_from_row(row) for row in rows]
+
+    def resolve_intervention_plan(
+        self, plan_id: str, status: str, reviewer: str, note: str
+    ) -> InterventionPlan | None:
+        if status not in {"approved", "rejected", "executed"}:
+            raise ValueError("Unsupported intervention status")
+        with self._lock, self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            self._transaction_lock(db, f"intervention:{plan_id}")
+            row = db.execute(
+                "SELECT * FROM intervention_plans WHERE id=?", (plan_id,)
+            ).fetchone()
+            if not row or row["status"] != "proposed":
+                return None
+            db.execute(
+                """UPDATE intervention_plans SET status=?, resolved_at=?,
+                       reviewer=?, note=? WHERE id=? AND status='proposed'""",
+                (status, utc_now().isoformat(), reviewer, note, plan_id),
+            )
+            updated = db.execute(
+                "SELECT * FROM intervention_plans WHERE id=?", (plan_id,)
+            ).fetchone()
+        return self._intervention_from_row(updated) if updated else None
+
+    def mark_intervention_executed(
+        self, plan_id: str, reviewer: str, note: str
+    ) -> InterventionPlan | None:
+        with self._lock, self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            self._transaction_lock(db, f"intervention:{plan_id}")
+            cursor = db.execute(
+                """UPDATE intervention_plans SET status='executed', resolved_at=?,
+                       reviewer=?, note=? WHERE id=? AND status='executing'""",
+                (utc_now().isoformat(), reviewer, note, plan_id),
+            )
+            row = db.execute(
+                "SELECT * FROM intervention_plans WHERE id=?", (plan_id,)
+            ).fetchone()
+        return (
+            self._intervention_from_row(row) if cursor.rowcount == 1 and row else None
+        )
+
+    def claim_intervention_execution(
+        self, plan_id: str, reviewer: str
+    ) -> InterventionPlan | None:
+        with self._lock, self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            self._transaction_lock(db, f"intervention:{plan_id}")
+            cursor = db.execute(
+                """UPDATE intervention_plans SET status='executing', reviewer=?
+                   WHERE id=? AND status='approved'""",
+                (reviewer, plan_id),
+            )
+            row = db.execute(
+                "SELECT * FROM intervention_plans WHERE id=?", (plan_id,)
+            ).fetchone()
+        return (
+            self._intervention_from_row(row) if cursor.rowcount == 1 and row else None
+        )
+
+    def fail_intervention_execution(
+        self, plan_id: str, reviewer: str, note: str
+    ) -> InterventionPlan | None:
+        with self._connect() as db:
+            cursor = db.execute(
+                """UPDATE intervention_plans SET status='failed', resolved_at=?,
+                       reviewer=?, note=? WHERE id=? AND status='executing'""",
+                (utc_now().isoformat(), reviewer, note, plan_id),
+            )
+            row = db.execute(
+                "SELECT * FROM intervention_plans WHERE id=?", (plan_id,)
+            ).fetchone()
+        return (
+            self._intervention_from_row(row) if cursor.rowcount == 1 and row else None
+        )
 
     def watch_summary(self, tenant_id: str | None = None) -> WatchSummary:
         with self._connect() as db:
@@ -651,9 +1033,7 @@ class Store:
                     "SELECT COUNT(*) FROM watch_findings WHERE status='open' "
                     "AND severity IN ('high','critical')",
                 )
-                monitored_events = self._scalar(
-                    db, "SELECT COUNT(*) FROM watch_events"
-                )
+                monitored_events = self._scalar(db, "SELECT COUNT(*) FROM watch_events")
                 cost_query = (
                     "SELECT COALESCE(SUM(estimated_cost_usd),0) AS total "
                     "FROM watch_tasks"
@@ -668,16 +1048,692 @@ class Store:
                 ),
             )
 
+    def agent_is_active(self, tenant_id: str, agent_id: str) -> bool:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT 1 FROM agents WHERE tenant_id=? AND agent_id=? AND status='active'",
+                (tenant_id, agent_id),
+            ).fetchone()
+        return row is not None
+
+    def tenant_usage(self, tenant_id: str) -> dict[str, int]:
+        month_start = (
+            utc_now()
+            .replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            .isoformat()
+        )
+        with self._connect() as db:
+            return {
+                "agents": self._scalar(
+                    db,
+                    "SELECT COUNT(*) FROM agents WHERE tenant_id=? AND status='active'",
+                    (tenant_id,),
+                ),
+                "decisions_month": self._scalar(
+                    db,
+                    "SELECT COUNT(*) FROM action_events WHERE tenant_id=? AND created_at>=?",
+                    (tenant_id, month_start),
+                ),
+                "watch_events_month": self._scalar(
+                    db,
+                    "SELECT COUNT(*) FROM watch_events WHERE tenant_id=? AND created_at>=?",
+                    (tenant_id, month_start),
+                ),
+                "llm_analyses_month": self._scalar(
+                    db,
+                    "SELECT COUNT(*) FROM watch_intelligence_analyses "
+                    "WHERE tenant_id=? AND created_at>=?",
+                    (tenant_id, month_start),
+                ),
+            }
+
+    def upsert_tenant_subscription(self, record: TenantSubscription) -> None:
+        with self._connect() as db:
+            db.execute(
+                """INSERT INTO tenant_subscriptions (
+                       tenant_id, plan, status, stripe_customer_id,
+                       stripe_subscription_id, extra_agents, current_period_end,
+                       updated_at
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(tenant_id) DO UPDATE SET
+                       plan=excluded.plan, status=excluded.status,
+                       stripe_customer_id=COALESCE(excluded.stripe_customer_id,
+                                                   tenant_subscriptions.stripe_customer_id),
+                       stripe_subscription_id=COALESCE(excluded.stripe_subscription_id,
+                                                       tenant_subscriptions.stripe_subscription_id),
+                       extra_agents=excluded.extra_agents,
+                       current_period_end=excluded.current_period_end,
+                       updated_at=excluded.updated_at""",
+                (
+                    record.tenant_id,
+                    record.plan.value,
+                    record.status,
+                    record.stripe_customer_id,
+                    record.stripe_subscription_id,
+                    record.extra_agents,
+                    record.current_period_end.isoformat()
+                    if record.current_period_end
+                    else None,
+                    record.updated_at.isoformat(),
+                ),
+            )
+
+    def get_tenant_subscription(self, tenant_id: str) -> TenantSubscription | None:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT * FROM tenant_subscriptions WHERE tenant_id=?", (tenant_id,)
+            ).fetchone()
+        if row is None:
+            return None
+        return TenantSubscription(
+            tenant_id=row["tenant_id"],
+            plan=ProductPlan(row["plan"]),
+            status=row["status"],
+            stripe_customer_id=row["stripe_customer_id"],
+            stripe_subscription_id=row["stripe_subscription_id"],
+            extra_agents=row["extra_agents"],
+            current_period_end=(
+                datetime.fromisoformat(row["current_period_end"])
+                if row["current_period_end"]
+                else None
+            ),
+            updated_at=datetime.fromisoformat(row["updated_at"]),
+        )
+
+    def claim_billing_event(self, event_id: str, event_type: str) -> bool:
+        now = utc_now().isoformat()
+        stale_before = (utc_now() - timedelta(minutes=10)).isoformat()
+        with self._connect() as db:
+            cursor = db.execute(
+                """INSERT INTO billing_events (
+                       event_id, event_type, status, error, received_at, completed_at
+                   ) VALUES (?, ?, 'processing', NULL, ?, NULL)
+                   ON CONFLICT(event_id) DO NOTHING""",
+                (event_id, event_type, now),
+            )
+            if cursor.rowcount == 1:
+                return True
+            retry = db.execute(
+                """UPDATE billing_events SET status='processing', error=NULL,
+                       received_at=?, completed_at=NULL
+                   WHERE event_id=? AND (
+                       status='failed' OR
+                       (status='processing' AND received_at < ?)
+                   )""",
+                (now, event_id, stale_before),
+            )
+            return retry.rowcount == 1
+
+    def complete_billing_event(self, event_id: str) -> None:
+        with self._connect() as db:
+            db.execute(
+                "UPDATE billing_events SET status='completed', completed_at=? WHERE event_id=?",
+                (utc_now().isoformat(), event_id),
+            )
+
+    def fail_billing_event(self, event_id: str, error: str) -> None:
+        with self._connect() as db:
+            db.execute(
+                "UPDATE billing_events SET status='failed', error=? WHERE event_id=?",
+                (error[:1000], event_id),
+            )
+
+    def upsert_operator_account(self, account: OperatorAccount) -> OperatorAccount:
+        with self._connect() as db:
+            db.execute(
+                """INSERT INTO operator_accounts (
+                       subject, email, status, created_at, updated_at
+                   ) VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT(subject) DO UPDATE SET
+                       email=COALESCE(excluded.email, operator_accounts.email),
+                       updated_at=excluded.updated_at""",
+                (
+                    account.subject,
+                    account.email,
+                    account.status,
+                    account.created_at.isoformat(),
+                    account.updated_at.isoformat(),
+                ),
+            )
+        return self.get_operator_account(account.subject) or account
+
+    def get_operator_account(self, subject: str) -> OperatorAccount | None:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT * FROM operator_accounts WHERE subject=?", (subject,)
+            ).fetchone()
+        if row is None:
+            return None
+        return OperatorAccount(
+            subject=row["subject"],
+            email=row["email"],
+            status=row["status"],
+            created_at=datetime.fromisoformat(row["created_at"]),
+            updated_at=datetime.fromisoformat(row["updated_at"]),
+        )
+
+    def create_organisation(
+        self, organisation: Organisation, owner: TenantMembership
+    ) -> Organisation:
+        with self._connect() as db:
+            db.execute(
+                """INSERT INTO organisations (
+                       tenant_id, name, status, created_by, created_at, updated_at
+                   ) VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    organisation.tenant_id,
+                    organisation.name,
+                    organisation.status.value,
+                    organisation.created_by,
+                    organisation.created_at.isoformat(),
+                    organisation.updated_at.isoformat(),
+                ),
+            )
+            db.execute(
+                """INSERT INTO tenant_memberships (
+                       tenant_id, subject, email, role, status, created_at, updated_at
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    owner.tenant_id,
+                    owner.subject,
+                    owner.email,
+                    owner.role.value,
+                    owner.status,
+                    owner.created_at.isoformat(),
+                    owner.updated_at.isoformat(),
+                ),
+            )
+        return organisation
+
+    def get_organisation(self, tenant_id: str) -> Organisation | None:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT * FROM organisations WHERE tenant_id=?", (tenant_id,)
+            ).fetchone()
+        if row is None:
+            return None
+        return Organisation(
+            tenant_id=row["tenant_id"],
+            name=row["name"],
+            status=OrganisationStatus(row["status"]),
+            created_by=row["created_by"],
+            created_at=datetime.fromisoformat(row["created_at"]),
+            updated_at=datetime.fromisoformat(row["updated_at"]),
+        )
+
+    def list_memberships(self, subject: str) -> list[TenantMembership]:
+        with self._connect() as db:
+            rows = db.execute(
+                """SELECT m.* FROM tenant_memberships m
+                   JOIN organisations o ON o.tenant_id=m.tenant_id
+                   WHERE m.subject=? AND m.status='active' AND o.status='active'
+                   ORDER BY m.created_at""",
+                (subject,),
+            ).fetchall()
+        return [self._membership(row) for row in rows]
+
+    def get_membership(
+        self, tenant_id: str, subject: str, *, allow_deletion_pending: bool = False
+    ) -> TenantMembership | None:
+        with self._connect() as db:
+            if allow_deletion_pending:
+                row = db.execute(
+                    """SELECT m.* FROM tenant_memberships m
+                       JOIN organisations o ON o.tenant_id=m.tenant_id
+                       WHERE m.tenant_id=? AND m.subject=? AND m.status='active'
+                         AND o.status IN ('active','deletion_pending')""",
+                    (tenant_id, subject),
+                ).fetchone()
+            else:
+                row = db.execute(
+                    """SELECT m.* FROM tenant_memberships m
+                       JOIN organisations o ON o.tenant_id=m.tenant_id
+                       WHERE m.tenant_id=? AND m.subject=? AND m.status='active'
+                         AND o.status='active'""",
+                    (tenant_id, subject),
+                ).fetchone()
+        return self._membership(row) if row is not None else None
+
+    def upsert_membership(self, membership: TenantMembership) -> TenantMembership:
+        with self._connect() as db:
+            db.execute(
+                """INSERT INTO tenant_memberships (
+                       tenant_id, subject, email, role, status, created_at, updated_at
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(tenant_id, subject) DO UPDATE SET
+                       email=COALESCE(excluded.email, tenant_memberships.email),
+                       role=excluded.role, status=excluded.status,
+                       updated_at=excluded.updated_at""",
+                (
+                    membership.tenant_id,
+                    membership.subject,
+                    membership.email,
+                    membership.role.value,
+                    membership.status,
+                    membership.created_at.isoformat(),
+                    membership.updated_at.isoformat(),
+                ),
+            )
+        return membership
+
+    def create_invitation(
+        self, invitation: TenantInvitation, token_digest: str
+    ) -> None:
+        with self._connect() as db:
+            db.execute(
+                """INSERT INTO tenant_invitations (
+                       id, tenant_id, email, role, token_digest, status,
+                       created_by, created_at, expires_at, accepted_at, accepted_by
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)""",
+                (
+                    invitation.id,
+                    invitation.tenant_id,
+                    invitation.email.casefold(),
+                    invitation.role.value,
+                    token_digest,
+                    invitation.status,
+                    invitation.created_by,
+                    invitation.created_at.isoformat(),
+                    invitation.expires_at.isoformat(),
+                ),
+            )
+
+    def accept_invitation(
+        self, token_digest: str, subject: str, email: str
+    ) -> TenantMembership | None:
+        now = utc_now()
+        with self._connect() as db:
+            self._transaction_lock(db, f"invitation:{token_digest}")
+            row = db.execute(
+                """SELECT * FROM tenant_invitations
+                   WHERE token_digest=? AND status='pending' AND expires_at>?""",
+                (token_digest, now.isoformat()),
+            ).fetchone()
+            if row is None or row["email"].casefold() != email.casefold():
+                return None
+            changed = db.execute(
+                """UPDATE tenant_invitations SET status='accepted',
+                       accepted_at=?, accepted_by=?
+                   WHERE id=? AND status='pending'""",
+                (now.isoformat(), subject, row["id"]),
+            )
+            if changed.rowcount != 1:
+                return None
+            membership = TenantMembership(
+                tenant_id=row["tenant_id"],
+                subject=subject,
+                email=email,
+                role=MembershipRole(row["role"]),
+                created_at=now,
+                updated_at=now,
+            )
+            db.execute(
+                """INSERT INTO tenant_memberships (
+                       tenant_id, subject, email, role, status, created_at, updated_at
+                   ) VALUES (?, ?, ?, ?, 'active', ?, ?)
+                   ON CONFLICT(tenant_id, subject) DO UPDATE SET
+                       email=excluded.email, role=excluded.role, status='active',
+                       updated_at=excluded.updated_at""",
+                (
+                    membership.tenant_id,
+                    subject,
+                    email,
+                    membership.role.value,
+                    now.isoformat(),
+                    now.isoformat(),
+                ),
+            )
+            return membership
+
+    def create_operator_session(
+        self, session: OperatorSession, token_digest: str, csrf_digest: str
+    ) -> None:
+        now = utc_now().isoformat()
+        with self._connect() as db:
+            db.execute(
+                """INSERT INTO operator_sessions (
+                       id, subject, email, token_digest, csrf_digest,
+                       created_at, expires_at, last_seen_at, revoked_at
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)""",
+                (
+                    session.id,
+                    session.subject,
+                    session.email,
+                    token_digest,
+                    csrf_digest,
+                    now,
+                    session.expires_at.isoformat(),
+                    now,
+                ),
+            )
+
+    def resolve_operator_session(
+        self, token_digest: str
+    ) -> tuple[str, str | None, str, str] | None:
+        now = utc_now().isoformat()
+        with self._connect() as db:
+            row = db.execute(
+                """SELECT * FROM operator_sessions
+                   WHERE token_digest=? AND revoked_at IS NULL AND expires_at>?""",
+                (token_digest, now),
+            ).fetchone()
+            if row is None:
+                return None
+            db.execute(
+                "UPDATE operator_sessions SET last_seen_at=? WHERE id=?",
+                (now, row["id"]),
+            )
+        return row["subject"], row["email"], row["id"], row["csrf_digest"]
+
+    def revoke_operator_session(self, session_id: str) -> bool:
+        with self._connect() as db:
+            changed = db.execute(
+                """UPDATE operator_sessions SET revoked_at=?
+                   WHERE id=? AND revoked_at IS NULL""",
+                (utc_now().isoformat(), session_id),
+            )
+        return changed.rowcount == 1
+
+    def deactivate_operator_account(self, subject: str) -> bool:
+        now = utc_now().isoformat()
+        with self._connect() as db:
+            owner = db.execute(
+                """SELECT 1 FROM tenant_memberships
+                   WHERE subject=? AND role='owner' AND status='active' LIMIT 1""",
+                (subject,),
+            ).fetchone()
+            if owner is not None:
+                return False
+            changed = db.execute(
+                """UPDATE operator_accounts SET status='deleted', updated_at=?
+                   WHERE subject=? AND status='active'""",
+                (now, subject),
+            )
+            db.execute(
+                """UPDATE tenant_memberships SET status='suspended', updated_at=?
+                   WHERE subject=? AND status='active'""",
+                (now, subject),
+            )
+            db.execute(
+                """UPDATE operator_sessions SET revoked_at=?
+                   WHERE subject=? AND revoked_at IS NULL""",
+                (now, subject),
+            )
+        return changed.rowcount == 1
+
+    def record_legal_acceptance(
+        self,
+        subject: str,
+        terms_version: str,
+        privacy_version: str,
+        source_ip_digest: str | None,
+        user_agent_digest: str | None,
+    ) -> None:
+        with self._connect() as db:
+            db.execute(
+                """INSERT INTO legal_acceptances (
+                       id, subject, terms_version, privacy_version, accepted_at,
+                       source_ip_digest, user_agent_digest
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    str(uuid4()),
+                    subject,
+                    terms_version,
+                    privacy_version,
+                    utc_now().isoformat(),
+                    source_ip_digest,
+                    user_agent_digest,
+                ),
+            )
+
+    def has_legal_acceptance(
+        self, subject: str, terms_version: str, privacy_version: str
+    ) -> bool:
+        with self._connect() as db:
+            row = db.execute(
+                """SELECT 1 FROM legal_acceptances
+                   WHERE subject=? AND terms_version=? AND privacy_version=?
+                   LIMIT 1""",
+                (subject, terms_version, privacy_version),
+            ).fetchone()
+        return row is not None
+
+    def schedule_tenant_deletion(
+        self,
+        tenant_id: str,
+        subject: str,
+        reason: str,
+        execute_after: datetime,
+    ) -> None:
+        now = utc_now()
+        with self._connect() as db:
+            db.execute(
+                """INSERT INTO tenant_deletion_requests (
+                       tenant_id, requested_by, reason, status, requested_at,
+                       execute_after, cancelled_at, completed_at
+                   ) VALUES (?, ?, ?, 'pending', ?, ?, NULL, NULL)
+                   ON CONFLICT(tenant_id) DO UPDATE SET
+                       requested_by=excluded.requested_by, reason=excluded.reason,
+                       status='pending', requested_at=excluded.requested_at,
+                       execute_after=excluded.execute_after, cancelled_at=NULL,
+                       completed_at=NULL""",
+                (
+                    tenant_id,
+                    subject,
+                    reason,
+                    now.isoformat(),
+                    execute_after.isoformat(),
+                ),
+            )
+            db.execute(
+                """UPDATE organisations SET status='deletion_pending', updated_at=?
+                   WHERE tenant_id=?""",
+                (now.isoformat(), tenant_id),
+            )
+
+    def cancel_tenant_deletion(self, tenant_id: str) -> bool:
+        now = utc_now().isoformat()
+        with self._connect() as db:
+            changed = db.execute(
+                """UPDATE tenant_deletion_requests SET status='cancelled',
+                       cancelled_at=? WHERE tenant_id=? AND status='pending'""",
+                (now, tenant_id),
+            )
+            if changed.rowcount == 1:
+                db.execute(
+                    """UPDATE organisations SET status='active', updated_at=?
+                       WHERE tenant_id=? AND status='deletion_pending'""",
+                    (now, tenant_id),
+                )
+        return changed.rowcount == 1
+
+    def tenant_export_summary(self, tenant_id: str) -> dict[str, object]:
+        with self._connect() as db:
+            counts = {
+                "memberships": self._scalar(
+                    db,
+                    "SELECT COUNT(*) FROM tenant_memberships WHERE tenant_id=?",
+                    (tenant_id,),
+                ),
+                "agents": self._scalar(
+                    db, "SELECT COUNT(*) FROM agents WHERE tenant_id=?", (tenant_id,)
+                ),
+                "agent_tokens": self._scalar(
+                    db,
+                    "SELECT COUNT(*) FROM agent_tokens WHERE tenant_id=?",
+                    (tenant_id,),
+                ),
+                "approvals": self._scalar(
+                    db,
+                    "SELECT COUNT(*) FROM approvals_v2 WHERE tenant_id=?",
+                    (tenant_id,),
+                ),
+                "actions": self._scalar(
+                    db,
+                    "SELECT COUNT(*) FROM action_events WHERE tenant_id=?",
+                    (tenant_id,),
+                ),
+                "lineage_events": self._scalar(
+                    db,
+                    "SELECT COUNT(*) FROM lineage_events WHERE tenant_id=?",
+                    (tenant_id,),
+                ),
+                "incidents": self._scalar(
+                    db,
+                    "SELECT COUNT(*) FROM incidents WHERE tenant_id=?",
+                    (tenant_id,),
+                ),
+                "watch_tasks": self._scalar(
+                    db,
+                    "SELECT COUNT(*) FROM watch_tasks WHERE tenant_id=?",
+                    (tenant_id,),
+                ),
+                "watch_events": self._scalar(
+                    db,
+                    "SELECT COUNT(*) FROM watch_events WHERE tenant_id=?",
+                    (tenant_id,),
+                ),
+                "watch_findings": self._scalar(
+                    db,
+                    "SELECT COUNT(*) FROM watch_findings WHERE tenant_id=?",
+                    (tenant_id,),
+                ),
+                "intervention_plans": self._scalar(
+                    db,
+                    "SELECT COUNT(*) FROM intervention_plans WHERE tenant_id=?",
+                    (tenant_id,),
+                ),
+            }
+        organisation = self.get_organisation(tenant_id)
+        return {
+            "tenant_id": tenant_id,
+            "organisation": organisation.model_dump(mode="json")
+            if organisation
+            else None,
+            "counts": counts,
+            "generated_at": utc_now().isoformat(),
+            "contains_secret_values": False,  # nosec B105
+            "note": "Metadata inventory only; a full regulated-data export requires an approved runbook.",
+        }
+
+    @staticmethod
+    def _membership(row: Any) -> TenantMembership:
+        return TenantMembership(
+            tenant_id=row["tenant_id"],
+            subject=row["subject"],
+            email=row["email"],
+            role=MembershipRole(row["role"]),
+            status=row["status"],
+            created_at=datetime.fromisoformat(row["created_at"]),
+            updated_at=datetime.fromisoformat(row["updated_at"]),
+        )
+
+    def store_watch_intelligence(
+        self,
+        result: WatchIntelligenceResult,
+        agent_id: str,
+        input_digest: str,
+    ) -> None:
+        with self._connect() as db:
+            db.execute(
+                """INSERT INTO watch_intelligence_analyses VALUES (
+                       ?, ?, ?, ?, ?, ?, ?, ?, ?
+                   )""",
+                (
+                    result.analysis_id,
+                    result.tenant_id,
+                    agent_id,
+                    result.task_id,
+                    result.model,
+                    result.prompt_version,
+                    input_digest,
+                    json.dumps(result.model_dump(mode="json"), sort_keys=True),
+                    result.created_at.isoformat(),
+                ),
+            )
+
+    def upsert_response_policy(self, policy: ResponsePolicy) -> ResponsePolicy:
+        with self._connect() as db:
+            db.execute(
+                """INSERT INTO response_policies VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(tenant_id, finding_code) DO UPDATE SET
+                       action=excluded.action,
+                       minimum_confidence=excluded.minimum_confidence,
+                       deterministic_only=excluded.deterministic_only,
+                       enabled=excluded.enabled,
+                       updated_by=excluded.updated_by,
+                       updated_at=excluded.updated_at""",
+                (
+                    policy.tenant_id,
+                    policy.finding_code,
+                    policy.action,
+                    policy.minimum_confidence,
+                    int(policy.deterministic_only),
+                    int(policy.enabled),
+                    policy.updated_by,
+                    policy.updated_at.isoformat(),
+                ),
+            )
+        return policy
+
+    def response_policy(
+        self, tenant_id: str, finding_code: str
+    ) -> ResponsePolicy | None:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT * FROM response_policies WHERE tenant_id=? AND finding_code=?",
+                (tenant_id, finding_code),
+            ).fetchone()
+        return self._response_policy_from_row(row) if row else None
+
+    def list_response_policies(self, tenant_id: str) -> list[ResponsePolicy]:
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT * FROM response_policies WHERE tenant_id=? ORDER BY finding_code",
+                (tenant_id,),
+            ).fetchall()
+        return [self._response_policy_from_row(row) for row in rows]
+
+    def revoke_session_tokens(
+        self, tenant_id: str, task_id: str, session_id: str, reason: str
+    ) -> int:
+        now = utc_now().isoformat()
+        with self._connect() as db:
+            cursor = db.execute(
+                """UPDATE agent_tokens SET revoked_at=?, revoke_reason=?
+                   WHERE revoked_at IS NULL AND token_id IN (
+                       SELECT token_id FROM watch_session_credentials
+                       WHERE tenant_id=? AND task_id=? AND session_id=?
+                   )""",
+                (now, reason, tenant_id, task_id, session_id),
+            )
+        return cursor.rowcount
+
+    @staticmethod
+    def _response_policy_from_row(row: Any) -> ResponsePolicy:
+        return ResponsePolicy(
+            tenant_id=row["tenant_id"],
+            finding_code=row["finding_code"],
+            action=row["action"],
+            minimum_confidence=row["minimum_confidence"],
+            deterministic_only=bool(row["deterministic_only"]),
+            enabled=bool(row["enabled"]),
+            updated_by=row["updated_by"],
+            updated_at=datetime.fromisoformat(row["updated_at"]),
+        )
+
     @staticmethod
     def _watch_task_from_row(row: Any) -> WatchTaskRecord:
         return WatchTaskRecord(
             task_id=row["task_id"],
+            workflow_id=row["workflow_id"] or row["task_id"],
             tenant_id=row["tenant_id"],
             agent_id=row["agent_id"],
             description=row["description"],
             profile=WatchProfile(row["profile"]),
             expected_tools=json.loads(row["expected_tools_json"]),
             success_criteria=json.loads(row["success_criteria_json"]),
+            allow_multi_session=bool(row["allow_multi_session"]),
             max_runtime_seconds=row["max_runtime_seconds"],
             max_tool_calls=row["max_tool_calls"],
             max_cost_usd=row["max_cost_usd"],
@@ -710,6 +1766,30 @@ class Store:
             occurrences=row["occurrences"],
             first_seen=datetime.fromisoformat(row["first_seen"]),
             last_seen=datetime.fromisoformat(row["last_seen"]),
+            resolved_at=(
+                datetime.fromisoformat(row["resolved_at"])
+                if row["resolved_at"]
+                else None
+            ),
+            reviewer=row["reviewer"],
+            note=row["note"],
+            detector_type=row["detector_type"],
+            analysis_id=row["analysis_id"],
+        )
+
+    @staticmethod
+    def _intervention_from_row(row: Any) -> InterventionPlan:
+        return InterventionPlan(
+            id=row["id"],
+            finding_id=row["finding_id"],
+            tenant_id=row["tenant_id"],
+            agent_id=row["agent_id"],
+            task_id=row["task_id"],
+            action=InterventionAction(row["action"]),
+            rationale=row["rationale"],
+            parameters=json.loads(row["parameters_json"]),
+            status=row["status"],
+            created_at=datetime.fromisoformat(row["created_at"]),
             resolved_at=(
                 datetime.fromisoformat(row["resolved_at"])
                 if row["resolved_at"]
@@ -886,8 +1966,12 @@ class Store:
                    findings_json=excluded.findings_json,
                    observed_at=excluded.observed_at""",
                 (
-                    server_id, tool_name, digest, status,
-                    json.dumps(sorted(set(findings))), utc_now().isoformat(),
+                    server_id,
+                    tool_name,
+                    digest,
+                    status,
+                    json.dumps(sorted(set(findings))),
+                    utc_now().isoformat(),
                 ),
             )
 
@@ -1083,8 +2167,10 @@ class Store:
             rows = db.execute(query, tuple(params)).fetchall()
         return [
             AgentRecord(
-                tenant_id=row["tenant_id"], agent_id=row["agent_id"],
-                owner=row["owner"], status=row["status"],
+                tenant_id=row["tenant_id"],
+                agent_id=row["agent_id"],
+                owner=row["owner"],
+                status=row["status"],
                 scopes=json.loads(row["scopes_json"]),
                 created_at=datetime.fromisoformat(row["created_at"]),
                 updated_at=datetime.fromisoformat(row["updated_at"]),
@@ -1106,18 +2192,31 @@ class Store:
     ) -> ContainmentRecord:
         now = utc_now()
         record = ContainmentRecord(
-            id=str(uuid4()), tenant_id=tenant_id, agent_id=agent_id, mode=mode,
-            reason=reason, reviewer=reviewer, allowed_tools=sorted(set(allowed_tools)),
-            incident_id=incident_id, created_at=now,
+            id=str(uuid4()),
+            tenant_id=tenant_id,
+            agent_id=agent_id,
+            mode=mode,
+            reason=reason,
+            reviewer=reviewer,
+            allowed_tools=sorted(set(allowed_tools)),
+            incident_id=incident_id,
+            created_at=now,
             expires_at=now + timedelta(seconds=duration_seconds),
         )
         with self._connect() as db:
             db.execute(
                 "INSERT INTO containments VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)",
                 (
-                    record.id, tenant_id, agent_id, mode.value, reason, reviewer,
-                    json.dumps(record.allowed_tools), incident_id,
-                    record.created_at.isoformat(), record.expires_at.isoformat(),
+                    record.id,
+                    tenant_id,
+                    agent_id,
+                    mode.value,
+                    reason,
+                    reviewer,
+                    json.dumps(record.allowed_tools),
+                    incident_id,
+                    record.created_at.isoformat(),
+                    record.expires_at.isoformat(),
                 ),
             )
         if mode is ContainmentMode.REVOKE:
@@ -1188,17 +2287,34 @@ class Store:
         return bool(used + amount <= hourly_limit)
 
     def record_action(
-        self, tenant_id: str, agent_id: str, trace_id: str, tool_name: str,
-        category: str, decision: str,
+        self,
+        tenant_id: str,
+        agent_id: str,
+        trace_id: str,
+        tool_name: str,
+        category: str,
+        decision: str,
     ) -> None:
         with self._connect() as db:
             db.execute(
                 "INSERT INTO action_events VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (tenant_id, agent_id, trace_id, tool_name, category, decision, utc_now().isoformat()),
+                (
+                    tenant_id,
+                    agent_id,
+                    trace_id,
+                    tool_name,
+                    category,
+                    decision,
+                    utc_now().isoformat(),
+                ),
             )
 
     def trace_has_category(
-        self, tenant_id: str, agent_id: str, trace_id: str, category: str,
+        self,
+        tenant_id: str,
+        agent_id: str,
+        trace_id: str,
+        category: str,
         window_seconds: int = 900,
     ) -> bool:
         cutoff = (utc_now() - timedelta(seconds=window_seconds)).isoformat()
@@ -1220,7 +2336,9 @@ class Store:
         filters: list[str] = []
         params: list[Any] = []
         for column, value in (
-            ("tenant_id", tenant_id), ("agent_id", agent_id), ("trace_id", trace_id)
+            ("tenant_id", tenant_id),
+            ("agent_id", agent_id),
+            ("trace_id", trace_id),
         ):
             if value:
                 filters.append(f"{column}=?")
@@ -1489,6 +2607,35 @@ class Store:
             )
         return True
 
+    def account_rate_allowed(
+        self,
+        subject: str,
+        action: str,
+        limit: int,
+        window_seconds: int,
+    ) -> bool:
+        """Atomically consume a rate-limit slot for an account-level action."""
+        now = utc_now()
+        cutoff = (now - timedelta(seconds=window_seconds)).isoformat()
+        with self._lock, self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            self._transaction_lock(db, f"account-rate:{subject}:{action}")
+            db.execute(
+                "DELETE FROM account_rate_events WHERE created_at < ?", (cutoff,)
+            )
+            count = db.execute(
+                "SELECT COUNT(*) AS n FROM account_rate_events "
+                "WHERE subject=? AND action=? AND created_at>=?",
+                (subject, action, cutoff),
+            ).fetchone()["n"]
+            if count >= limit:
+                return False
+            db.execute(
+                "INSERT INTO account_rate_events VALUES (?, ?, ?)",
+                (subject, action, now.isoformat()),
+            )
+        return True
+
     def record_violation(
         self,
         tenant_id: str,
@@ -1534,7 +2681,10 @@ class Store:
 
     def is_quarantined(self, tenant_id: str, agent_id: str) -> bool:
         active = self.active_containment(tenant_id, agent_id)
-        if active and active.mode in {ContainmentMode.QUARANTINE, ContainmentMode.REVOKE}:
+        if active and active.mode in {
+            ContainmentMode.QUARANTINE,
+            ContainmentMode.REVOKE,
+        }:
             return True
         with self._connect() as db:
             row = db.execute(
@@ -1613,53 +2763,61 @@ class Store:
                 "UPDATE incidents SET status=?, last_seen=? WHERE id=?",
                 (status, utc_now().isoformat(), incident_id),
             )
-            row = db.execute("SELECT * FROM incidents WHERE id=?", (incident_id,)).fetchone()
+            row = db.execute(
+                "SELECT * FROM incidents WHERE id=?", (incident_id,)
+            ).fetchone()
         if cursor.rowcount != 1 or not row:
             return None
         self.append_audit(
             "incident_status_changed",
-            {"incident_id": incident_id, "status": status, "reviewer": reviewer, "note": note},
+            {
+                "incident_id": incident_id,
+                "status": status,
+                "reviewer": reviewer,
+                "note": note,
+            },
         )
         return Incident(**dict(row))
 
     def metrics(self) -> dict[str, int]:
         with self._connect() as db:
             return {
-                "audit_events": self._scalar(db,
-                    "SELECT COUNT(*) FROM audit_events"
+                "audit_events": self._scalar(db, "SELECT COUNT(*) FROM audit_events"),
+                "pending_approvals": self._scalar(
+                    db, "SELECT COUNT(*) FROM approvals_v2 WHERE status='pending'"
                 ),
-                "pending_approvals": self._scalar(db,
-                    "SELECT COUNT(*) FROM approvals_v2 WHERE status='pending'"
+                "open_incidents": self._scalar(
+                    db, "SELECT COUNT(*) FROM incidents WHERE status='open'"
                 ),
-                "open_incidents": self._scalar(db,
-                    "SELECT COUNT(*) FROM incidents WHERE status='open'"
-                ),
-                "quarantined_agents": self._scalar(db,
+                "quarantined_agents": self._scalar(
+                    db,
                     """SELECT COUNT(DISTINCT tenant_id || ':' || agent_id)
                        FROM containments WHERE released_at IS NULL AND expires_at>?
                        AND mode IN ('quarantine','revoke')""",
                     (utc_now().isoformat(),),
                 ),
-                "active_containments": self._scalar(db,
+                "active_containments": self._scalar(
+                    db,
                     "SELECT COUNT(*) FROM containments WHERE released_at IS NULL AND expires_at>?",
                     (utc_now().isoformat(),),
                 ),
                 "registered_agents": self._scalar(db, "SELECT COUNT(*) FROM agents"),
-                "successful_executions": self._scalar(db,
-                    "SELECT COUNT(*) FROM executions WHERE status='succeeded'"
+                "successful_executions": self._scalar(
+                    db, "SELECT COUNT(*) FROM executions WHERE status='succeeded'"
                 ),
-                "failed_executions": self._scalar(db,
-                    "SELECT COUNT(*) FROM executions WHERE status='failed'"
+                "failed_executions": self._scalar(
+                    db, "SELECT COUNT(*) FROM executions WHERE status='failed'"
                 ),
-                "tainted_traces": self._scalar(db,
+                "tainted_traces": self._scalar(
+                    db,
                     """SELECT COUNT(DISTINCT tenant_id || ':' || agent_id || ':' || trace_id)
                        FROM lineage_events WHERE classification IN ('confidential','restricted')
                        OR labels_json LIKE '%prompt_injection%'
                        OR labels_json LIKE '%customer-data%'
-                       OR labels_json LIKE '%secret%'"""
+                       OR labels_json LIKE '%secret%'""",
                 ),
-                "mcp_tools_baselined": self._scalar(db,
-                    "SELECT COUNT(*) FROM mcp_tool_baselines"
+                "mcp_tools_baselined": self._scalar(
+                    db, "SELECT COUNT(*) FROM mcp_tool_baselines"
                 ),
                 "notification_jobs_pending": self._scalar(
                     db,
@@ -1680,7 +2838,8 @@ class Store:
     def recent_audit(self, limit: int = 100) -> list[dict[str, Any]]:
         with self._connect() as db:
             rows = db.execute(
-                "SELECT * FROM audit_events ORDER BY created_at DESC, id DESC LIMIT ?", (limit,)
+                "SELECT * FROM audit_events ORDER BY created_at DESC, id DESC LIMIT ?",
+                (limit,),
             ).fetchall()
         return [dict(row) | {"payload": json.loads(row["payload"])} for row in rows]
 
@@ -1747,12 +2906,19 @@ class Store:
     @staticmethod
     def _containment_from_row(row: sqlite3.Row) -> ContainmentRecord:
         return ContainmentRecord(
-            id=row["id"], tenant_id=row["tenant_id"], agent_id=row["agent_id"],
-            mode=ContainmentMode(row["mode"]), reason=row["reason"], reviewer=row["reviewer"],
-            allowed_tools=json.loads(row["allowed_tools_json"]), incident_id=row["incident_id"],
+            id=row["id"],
+            tenant_id=row["tenant_id"],
+            agent_id=row["agent_id"],
+            mode=ContainmentMode(row["mode"]),
+            reason=row["reason"],
+            reviewer=row["reviewer"],
+            allowed_tools=json.loads(row["allowed_tools_json"]),
+            incident_id=row["incident_id"],
             created_at=datetime.fromisoformat(row["created_at"]),
             expires_at=datetime.fromisoformat(row["expires_at"]),
-            released_at=datetime.fromisoformat(row["released_at"]) if row["released_at"] else None,
+            released_at=datetime.fromisoformat(row["released_at"])
+            if row["released_at"]
+            else None,
         )
 
     @staticmethod

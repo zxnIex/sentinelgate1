@@ -32,7 +32,9 @@ def postgres_url():
 @pytest.fixture(scope="module")
 def stores(postgres_url):
     first = Store(postgres_url, "audit-key", "encryption-key-that-is-long-enough", 1, 4)
-    second = Store(postgres_url, "audit-key", "encryption-key-that-is-long-enough", 1, 4)
+    second = Store(
+        postgres_url, "audit-key", "encryption-key-that-is-long-enough", 1, 4
+    )
     try:
         yield first, second
     finally:
@@ -54,19 +56,27 @@ def test_multi_instance_approval_and_outbox_claim_are_single_winner(stores):
         tool_name="send_email",
         arguments={"to": "test@example.com", "subject": "test", "body": "test"},
     )
-    approval = first.create_approval(request, request_hash(request, principal), principal, 900)
+    approval = first.create_approval(
+        request, request_hash(request, principal), principal, 900
+    )
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(
             pool.map(
-                lambda store: store.resolve_approval(approval.id, "approved", "reviewer", "ok"),
+                lambda store: store.resolve_approval(
+                    approval.id, "approved", "reviewer", "ok"
+                ),
                 (first, second),
             )
         )
     assert sum(result is not None for result in results) == 1
 
-    first.enqueue_outbox("approval.required", "postgres-job", {"approval_id": approval.id})
+    first.enqueue_outbox(
+        "approval.required", "postgres-job", {"approval_id": approval.id}
+    )
     with ThreadPoolExecutor(max_workers=2) as pool:
-        jobs = list(pool.map(lambda store: store.claim_outbox("worker", 30), (first, second)))
+        jobs = list(
+            pool.map(lambda store: store.claim_outbox("worker", 30), (first, second))
+        )
     assert sum(job is not None for job in jobs) == 1
 
 

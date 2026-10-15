@@ -140,7 +140,11 @@ class PolicyEngine:
             return Evaluation(Decision.DENY, blocked, risk, self.version)
 
         is_sensitive = bool(tool.get("sensitive", False))
-        if tool.get("requires_provenance", False) and not provenance and not field_provenance:
+        if (
+            tool.get("requires_provenance", False)
+            and not provenance
+            and not field_provenance
+        ):
             return self._deny("MISSING_PROVENANCE", risk)
         if is_sensitive and any(
             item.trust is TrustLevel.UNTRUSTED for item in provenance

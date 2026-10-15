@@ -45,8 +45,10 @@ def run(corpus_path: Path | None = None) -> dict[str, object]:
         for index, case in enumerate(corpus["cases"]):
             trace_id = f"evaluation-{index}"
             principal = AgentPrincipal(
-                agent_id=case["agent_id"], tenant_id="evaluation",
-                scopes=frozenset(case["scopes"]), token_id=f"evaluation-{index}",
+                agent_id=case["agent_id"],
+                tenant_id="evaluation",
+                scopes=frozenset(case["scopes"]),
+                token_id=f"evaluation-{index}",
                 expires_at=utc_now() + timedelta(hours=1),
             )
             field_provenance = {}
@@ -75,16 +77,20 @@ def run(corpus_path: Path | None = None) -> dict[str, object]:
                     for destination, source in structured.get("bind", {}).items()
                 }
             call = ToolCallRequest(
-                user_id="evaluation", tool_name=case["tool"],
-                arguments=case["arguments"], trace_id=trace_id,
+                user_id="evaluation",
+                tool_name=case["tool"],
+                arguments=case["arguments"],
+                trace_id=trace_id,
                 field_provenance=field_provenance,
             )
             decision = service.evaluate(call, principal, side_effects=False)
             actual = decision.decision.value
             results.append(
                 {
-                    "name": case["name"], "class": case["class"],
-                    "expected": case["expected"], "actual": actual,
+                    "name": case["name"],
+                    "class": case["class"],
+                    "expected": case["expected"],
+                    "actual": actual,
                     "passed": actual == case["expected"],
                     "reasons": decision.reason_codes,
                 }
@@ -96,11 +102,18 @@ def run(corpus_path: Path | None = None) -> dict[str, object]:
     return {
         "corpus_version": corpus["version"],
         "scope": "deterministic regression conformance only; not an efficacy claim or independent validation",
-        "environment": {"python": platform.python_version(), "platform": platform.platform()},
+        "environment": {
+            "python": platform.python_version(),
+            "platform": platform.platform(),
+        },
         "cases": len(results),
-        "exact_match_rate": round(sum(item["passed"] for item in results) / len(results), 4),
+        "exact_match_rate": round(
+            sum(item["passed"] for item in results) / len(results), 4
+        ),
         "attack_detection_rate": round(detected / len(attacks), 4) if attacks else None,
-        "benign_false_positive_rate": round(false_positives / len(benign), 4) if benign else None,
+        "benign_false_positive_rate": round(false_positives / len(benign), 4)
+        if benign
+        else None,
         "results": results,
         "warning": "A passing regression means configured rules behaved as expected; it does not estimate resistance to novel attacks.",
     }

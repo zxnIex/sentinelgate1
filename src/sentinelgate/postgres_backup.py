@@ -21,13 +21,19 @@ class BackupError(RuntimeError):
 def _executable(name: str) -> str:
     resolved = shutil.which(name)
     if not resolved:
-        raise BackupError(f"Required PostgreSQL client executable is unavailable: {name}")
+        raise BackupError(
+            f"Required PostgreSQL client executable is unavailable: {name}"
+        )
     return str(Path(resolved).resolve())
 
 
 def _connection_environment(database_url: str) -> tuple[dict[str, str], str]:
     parsed = urlparse(database_url.replace("postgresql+psycopg://", "postgresql://", 1))
-    if parsed.scheme != "postgresql" or not parsed.hostname or not parsed.path.strip("/"):
+    if (
+        parsed.scheme != "postgresql"
+        or not parsed.hostname
+        or not parsed.path.strip("/")
+    ):
         raise BackupError("A PostgreSQL SENTINEL_DATABASE_URL is required")
     environment = os.environ.copy()
     environment.update(
@@ -59,7 +65,13 @@ def create_backup(database_url: str, destination: Path) -> dict[str, object]:
     try:
         # Executable is resolved to an absolute path and every flag is fixed.
         subprocess.run(  # nosec B603
-            [_executable("pg_dump"), "--format=custom", "--no-owner", "--file", str(temporary)],
+            [
+                _executable("pg_dump"),
+                "--format=custom",
+                "--no-owner",
+                "--file",
+                str(temporary),
+            ],
             env=environment,
             check=True,
             capture_output=True,
@@ -106,15 +118,22 @@ def verify_backup(backup: Path) -> dict[str, object]:
     return {
         "verified": True,
         "sha256": actual,
-        "catalog_entries": len([line for line in result.stdout.splitlines() if line and not line.startswith(";")]),
+        "catalog_entries": len(
+            [
+                line
+                for line in result.stdout.splitlines()
+                if line and not line.startswith(";")
+            ]
+        ),
         "manifest": manifest,
     }
 
 
-def restore_drill(database_url: str, backup: Path, target_database: str) -> dict[str, object]:
-    if (
-        not target_database.endswith("_restore_drill")
-        or not re.fullmatch(r"[A-Za-z0-9_]{1,63}", target_database)
+def restore_drill(
+    database_url: str, backup: Path, target_database: str
+) -> dict[str, object]:
+    if not target_database.endswith("_restore_drill") or not re.fullmatch(
+        r"[A-Za-z0-9_]{1,63}", target_database
     ):
         raise BackupError("Restore-drill database name must end with _restore_drill")
     environment, source_database = _connection_environment(database_url)
@@ -160,9 +179,13 @@ def restore_drill(database_url: str, backup: Path, target_database: str) -> dict
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="SentinelGate PostgreSQL recovery tools")
+    parser = argparse.ArgumentParser(
+        description="SentinelGate PostgreSQL recovery tools"
+    )
     parser.add_argument(
-        "--database-url", default=os.getenv("SENTINEL_DATABASE_URL"), help=argparse.SUPPRESS
+        "--database-url",
+        default=os.getenv("SENTINEL_DATABASE_URL"),
+        help=argparse.SUPPRESS,
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
     backup_parser = subparsers.add_parser("backup")

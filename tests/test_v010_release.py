@@ -62,8 +62,12 @@ def test_durable_notification_survives_request_and_is_processed(
 
 
 def test_outbox_is_deduplicated_and_failed_delivery_retries(store):
-    first = store.enqueue_outbox("approval.required", "approval-1", {"approval_id": "missing"}, 1)
-    second = store.enqueue_outbox("approval.required", "approval-1", {"approval_id": "changed"}, 1)
+    first = store.enqueue_outbox(
+        "approval.required", "approval-1", {"approval_id": "missing"}, 1
+    )
+    second = store.enqueue_outbox(
+        "approval.required", "approval-1", {"approval_id": "changed"}, 1
+    )
     assert first == second
     result = DurableWorker(store, RecordingNotifier(False), "worker-fail").process_one()
     assert result.claimed is True
@@ -89,7 +93,9 @@ def test_setup_system_and_assets_are_exposed(service, store):
         assert css.status_code == 200
         page = client.get("/console/onboarding")
         assert "script-src 'self'" in page.headers["content-security-policy"]
-        assert "script-src 'unsafe-inline'" not in page.headers["content-security-policy"]
+        assert (
+            "script-src 'unsafe-inline'" not in page.headers["content-security-policy"]
+        )
     finally:
         app.dependency_overrides.clear()
 
@@ -103,7 +109,9 @@ def test_backup_verification_checks_digest_and_catalog(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         "sentinelgate.postgres_backup.subprocess.run",
-        lambda *args, **kwargs: SimpleNamespace(stdout="; header\n1; TABLE public agents\n"),
+        lambda *args, **kwargs: SimpleNamespace(
+            stdout="; header\n1; TABLE public agents\n"
+        ),
     )
     monkeypatch.setattr(
         "sentinelgate.postgres_backup._executable", lambda name: f"/usr/bin/{name}"
@@ -146,7 +154,9 @@ def test_browser_oidc_login_uses_pkce_and_signed_state_cookie():
         client = TestClient(app)
         response = client.get("/auth/login", follow_redirects=False)
         assert response.status_code == 303
-        assert response.headers["location"].startswith("https://identity.example/authorize?")
+        assert response.headers["location"].startswith(
+            "https://identity.example/authorize?"
+        )
         assert "code_challenge_method=S256" in response.headers["location"]
         assert "sentinelgate_oidc_state=" in response.headers["set-cookie"]
         assert "HttpOnly" in response.headers["set-cookie"]

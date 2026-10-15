@@ -155,9 +155,12 @@ def test_output_lineage_is_queryable(service, principal):
     assert result.status == "succeeded"
     assert len(lineage) == 1
     assert lineage[0].source_type == "tool_output"
-    assert service.store.trace_summary(
-        principal.tenant_id, principal.agent_id, trace_id
-    ).node_count == 1
+    assert (
+        service.store.trace_summary(
+            principal.tenant_id, principal.agent_id, trace_id
+        ).node_count
+        == 1
+    )
 
 
 def test_provenance_token_cannot_cross_traces(service, principal):

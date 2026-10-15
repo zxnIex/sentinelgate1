@@ -1,14 +1,17 @@
 """Public site process. It contains no control-plane routes or credentials."""
 
+import os
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from sentinelgate.dashboard import LANDING_HTML, LEARN_HTML
+from sentinelgate.dashboard import LANDING_HTML, LEARN_HTML, branded_page
 
-app = FastAPI(title="SentinelGate website", docs_url=None, redoc_url=None, openapi_url=None)
+app = FastAPI(
+    title="SentinelGate website", docs_url=None, redoc_url=None, openapi_url=None
+)
 app.mount(
     "/assets",
     StaticFiles(directory=Path(__file__).with_name("static"), check_dir=True),
@@ -36,9 +39,11 @@ def health() -> dict[str, str]:
 
 @app.get("/", response_class=HTMLResponse)
 def landing() -> str:
-    return LANDING_HTML
+    return branded_page(
+        LANDING_HTML, os.getenv("SENTINEL_PRODUCT_NAME", "SentinelGate")
+    )
 
 
 @app.get("/learn", response_class=HTMLResponse)
 def learn() -> str:
-    return LEARN_HTML
+    return branded_page(LEARN_HTML, os.getenv("SENTINEL_PRODUCT_NAME", "SentinelGate"))

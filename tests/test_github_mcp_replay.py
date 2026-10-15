@@ -75,9 +75,7 @@ def test_github_app_uses_scoped_cached_installation_token(tmp_path):
             },
         )
 
-    client = httpx.Client(
-        base_url=GITHUB_API, transport=httpx.MockTransport(handler)
-    )
+    client = httpx.Client(base_url=GITHUB_API, transport=httpx.MockTransport(handler))
     connector = GitHubConnector(
         GitHubAppClient(
             "123",
@@ -95,7 +93,10 @@ def test_github_app_uses_scoped_cached_installation_token(tmp_path):
     assert first.classification is DataClassification.INTERNAL
     assert "external_content" in first.labels
     assert second.output["number"] == 7
-    assert len([item for item in requests if item.url.path.endswith("/access_tokens")]) == 1
+    assert (
+        len([item for item in requests if item.url.path.endswith("/access_tokens")])
+        == 1
+    )
 
 
 def test_github_connector_rejects_repository_and_secret_paths(tmp_path):
@@ -171,9 +172,7 @@ def test_github_connector_read_write_workflow_is_bounded():
 
     connector = GitHubConnector(StubClient())
     repository = {"owner": "acme", "repo": "project"}
-    read = connector.read_file(
-        repository | {"path": "src/app.py", "ref": "main"}
-    )
+    read = connector.read_file(repository | {"path": "src/app.py", "ref": "main"})
     branch = connector.create_branch(
         repository | {"branch": "feature/safe", "from_ref": "main"}
     )
@@ -245,7 +244,9 @@ def test_mcp_lists_only_authorized_tools_and_executes(service, principal):
 def test_observe_mode_never_executes_connector(service, principal):
     executions = []
     registry = ToolRegistry()
-    registry.register("search_knowledge", lambda args: executions.append(args) or {"ok": True})
+    registry.register(
+        "search_knowledge", lambda args: executions.append(args) or {"ok": True}
+    )
     observed = GatewayService(
         service.policy,
         service.store,
@@ -319,9 +320,7 @@ def test_github_issue_injection_taints_trace_and_blocks_write(store, signer):
     coding_agent = AgentPrincipal(
         agent_id="coding-agent",
         tenant_id="tenant-1",
-        scopes=frozenset(
-            {"tools:github:issues:read", "tools:github:issues:write"}
-        ),
+        scopes=frozenset({"tools:github:issues:read", "tools:github:issues:write"}),
         token_id="github-test",
         expires_at=utc_now() + timedelta(hours=1),
     )

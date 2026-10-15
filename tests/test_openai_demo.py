@@ -41,7 +41,9 @@ def test_demo_replays_output_when_storage_is_disabled(monkeypatch, capsys):
         return FakeHTTPResponse({"status": "succeeded", "result": {"hits": []}})
 
     dotenv_calls = []
-    monkeypatch.setattr(openai_demo, "load_dotenv", lambda **kw: dotenv_calls.append(kw))
+    monkeypatch.setattr(
+        openai_demo, "load_dotenv", lambda **kw: dotenv_calls.append(kw)
+    )
     monkeypatch.setattr(openai_demo, "OpenAI", FakeOpenAI)
     monkeypatch.setattr(openai_demo.httpx, "post", fake_post)
     monkeypatch.setattr("builtins.input", lambda _: "Find the security policy")

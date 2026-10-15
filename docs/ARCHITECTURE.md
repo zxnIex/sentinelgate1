@@ -1,6 +1,13 @@
 # SentinelGate architecture
 
-## v0.11 control surfaces
+## v0.16 product surfaces
+
+SentinelGate presents three operational surfaces over one control plane:
+
+- **Gate** is the inline authorization and information-flow enforcement point.
+- **Watch** correlates versioned task/session metadata and produces explainable findings.
+- **Watch+** adds selective evidence-bound LLM analysis, flight records, replay and bounded
+  interventions. Model output never receives execution authority.
 
 The public website can run as the separate `sentinelgate.marketing:app` process, which has no
 control-plane routes or credentials. Authenticated operations live in `sentinelgate.api:app`.
@@ -19,17 +26,23 @@ SentinelGate is an enforcement point, not a model-side instruction. An applicati
 route every custom tool call through the gateway and execute tools only when the gateway
 returns `succeeded`.
 
-## Watch boundary
+## Watch and Watch+ boundary
 
-SentinelGate Watch is an observational subsystem, not a second policy engine. Core decisions feed
+SentinelGate Watch is an observational subsystem, not a second policy engine. Gate decisions feed
 metadata-only call events into Watch after the decision is finalized. Runtimes may additionally
 submit explicit progress, result, token and estimated-cost events with a scoped agent identity.
 
 Watch applies fixed, reviewable thresholds to each tenant-and-agent-bound task. Findings contain a
-code, severity, confidence, evidence and recommended response. Watch has no connector registry,
-cannot execute tools and cannot create containment. An authenticated operator must independently
-invoke the existing Core containment endpoint after inspecting the evidence. A Watch failure is
-audited but cannot change a Core authorization decision or make the gateway unavailable.
+code, severity, confidence, evidence and recommended response. Watch+ LLM analysis operates only
+on bounded metadata, validates cited event IDs and produces advisory findings. It cannot approve
+or execute a plan. Human response requires one authenticated decision and a second explicit
+execution request. An administrator may separately enable a deterministic, high-confidence,
+task-pause-only policy; model findings are never eligible. Task recovery and session-level token
+revocation require an authenticated approver.
+
+The flight recorder is a joined view over task metadata, ordered schema-versioned events,
+findings and response plans. It records an event digest and audit-chain result, but deliberately
+does not store prompt bodies or raw tool arguments.
 
 ## Request path
 
@@ -126,6 +139,7 @@ after review. The gateway never changes unrelated cloud, endpoint or identity sy
 - It does not autonomously remediate arbitrary infrastructure.
 - It can federate administrator authentication to OIDC but does not replace the customer's
   identity provider, distributed database, KMS or SIEM.
-- Its MCP endpoint is not yet a full stateful Streamable HTTP/SSE and OAuth implementation.
+- Its MCP endpoint is not yet fully conformant with the modern stateless MCP 2026-07-28
+  lifecycle, MRTR, extensions and OAuth hardening requirements.
 
 These constraints make failure modes legible and keep containment bounded.

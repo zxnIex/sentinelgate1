@@ -43,7 +43,7 @@ Run the hostile provenance scenario. Confirm the outbound action is denied and t
 
 ## Acceptance check
 
-- health reports version 0.11.0;
+- health reports version 0.17.0;
 - database backend reports PostgreSQL;
 - a notification worker heartbeat appears in System health;
 - one safe call is allowed;

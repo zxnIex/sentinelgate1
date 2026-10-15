@@ -7,7 +7,9 @@ from sentinelgate.reporting import security_evidence_report
 from sentinelgate.settings import Settings, get_settings
 
 
-def manifest(description: str = "Search approved documents.") -> MCPManifestInspectionRequest:
+def manifest(
+    description: str = "Search approved documents.",
+) -> MCPManifestInspectionRequest:
     return MCPManifestInspectionRequest(
         tools=[
             {
@@ -30,7 +32,9 @@ def test_mcp_definition_baseline_blocks_rug_pull_until_accepted(store):
     assert first.accepted is True
     assert first.tools[0].status == "trusted"
 
-    changed = inspect_manifest("docs", manifest("Search every internal document."), store)
+    changed = inspect_manifest(
+        "docs", manifest("Search every internal document."), store
+    )
     assert changed.safe is False
     assert changed.tools[0].changed is True
     assert {item.code for item in changed.tools[0].findings} == {
@@ -42,7 +46,10 @@ def test_mcp_definition_baseline_blocks_rug_pull_until_accepted(store):
     accepted = inspect_manifest("docs", reviewed, store)
     assert accepted.safe is True
     assert accepted.accepted is True
-    assert store.get_mcp_tool_baseline("docs", "search_docs")["digest"] == accepted.tools[0].digest
+    assert (
+        store.get_mcp_tool_baseline("docs", "search_docs")["digest"]
+        == accepted.tools[0].digest
+    )
 
 
 def test_mcp_definition_blocks_instructions_and_collisions(store):
@@ -71,7 +78,7 @@ def test_mcp_definition_blocks_instructions_and_collisions(store):
 
 def test_security_report_is_evidence_not_certification(store):
     report = security_evidence_report(store, Settings(), 50)
-    assert report["product_version"] == "0.11.0"
+    assert report["product_version"] == "0.17.0"
     assert report["integrity"]["audit_chain_valid"] is True
     assert "not a SOC 2" in report["disclaimer"]
     assert report["control_evidence"]
@@ -106,7 +113,7 @@ def test_public_site_and_multi_page_console(service, store):
         assert policy.json()["version"] == "test-2"
         report = client.get("/v1/reports/security", headers=headers)
         assert report.status_code == 200
-        assert report.json()["product_version"] == "0.11.0"
+        assert report.json()["product_version"] == "0.17.0"
         audit_export = client.get("/v1/reports/audit.csv", headers=headers)
         assert audit_export.status_code == 200
         assert audit_export.headers["content-type"].startswith("text/csv")

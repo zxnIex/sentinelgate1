@@ -39,31 +39,22 @@ class DurableWorker:
         if not job:
             return WorkResult(False, False)
         try:
-            if job["kind"] != "approval.required":
+            if job["kind"] == "approval.required":
+                delivered, event_id = self._approval_job(job)
+                event_type = "approval_notification_delivered"
+            elif job["kind"] == "watch.finding":
+                delivered, event_id = self._finding_job(job)
+                event_type = "watch_finding_notification_delivered"
+            else:
                 raise RuntimeError(f"Unsupported outbox job kind: {job['kind']}")
-            approval_id = str(job["payload"]["approval_id"])
-            approval = self.store.get_approval(approval_id)
-            if approval is None:
-                raise RuntimeError("Approval record is unavailable")
-            if approval.status != "pending":
-                self.store.complete_outbox(job["id"], self.worker_id)
-                self.store.heartbeat_worker(self.worker_id, processed_delta=1)
-                self.store.append_audit(
-                    "approval_notification_skipped",
-                    {"approval_id": approval_id, "reason": "approval_not_pending"},
-                )
-                return WorkResult(True, True, job["id"])
-            delivered = self.notifier.notify(
-                approval, list(job["payload"].get("reason_codes", []))
-            )
             if not delivered:
                 raise RuntimeError("Webhook delivery did not return a success response")
             self.store.complete_outbox(job["id"], self.worker_id)
             self.store.heartbeat_worker(self.worker_id, processed_delta=1)
             self.store.append_audit(
-                "approval_notification_delivered",
+                event_type,
                 {
-                    "approval_id": approval_id,
+                    "record_id": event_id,
                     "job_id": job["id"],
                     "attempt": job["attempts"],
                 },
@@ -85,6 +76,29 @@ class DurableWorker:
                 },
             )
             return WorkResult(True, False, job["id"])
+
+    def _approval_job(self, job: dict) -> tuple[bool, str]:
+        approval_id = str(job["payload"]["approval_id"])
+        approval = self.store.get_approval(approval_id)
+        if approval is None:
+            raise RuntimeError("Approval record is unavailable")
+        if approval.status != "pending":
+            return True, approval_id
+        return (
+            self.notifier.notify(
+                approval, list(job["payload"].get("reason_codes", []))
+            ),
+            approval_id,
+        )
+
+    def _finding_job(self, job: dict) -> tuple[bool, str]:
+        finding_id = str(job["payload"]["finding_id"])
+        finding = self.store.get_watch_finding(finding_id)
+        if finding is None:
+            raise RuntimeError("Watch finding is unavailable")
+        if finding.status == "resolved":
+            return True, finding_id
+        return self.notifier.notify_finding(finding), finding_id
 
 
 def _store(settings: Settings) -> Store:

@@ -96,4 +96,3 @@ def combine_field_taint(
         labels=sorted({label for item in items for label in item.labels}),
         lineage_ids=sorted({lineage for item in items for lineage in item.lineage_ids}),
     )
-

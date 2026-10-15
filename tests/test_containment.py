@@ -41,9 +41,12 @@ def test_quarantine_blocks_and_release_restores(service, principal):
     assert blocked.decision is Decision.DENY
     assert "AGENT_QUARANTINED" in blocked.reason_codes
     assert service.store.release_containment(record.id)
-    assert service.evaluate(
-        call("search_knowledge", {"query": "safe"}), principal
-    ).decision is Decision.ALLOW
+    assert (
+        service.evaluate(
+            call("search_knowledge", {"query": "safe"}), principal
+        ).decision
+        is Decision.ALLOW
+    )
 
 
 def test_egress_volume_limit_denies_large_payload(service, principal, mixed_token):
@@ -68,9 +71,7 @@ def test_registered_token_can_be_revoked_immediately(store, signer):
     assert not store.token_is_active(principal)
 
 
-def test_sensitive_read_to_egress_sequence_is_detected(
-    service, principal, mixed_token
-):
+def test_sensitive_read_to_egress_sequence_is_detected(service, principal, mixed_token):
     trace_id = "trace-sequence"
     service.store.record_action(
         principal.tenant_id,

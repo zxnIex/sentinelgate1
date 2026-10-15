@@ -62,53 +62,76 @@ def inspect_manifest(
         findings: list[MCPToolFinding] = []
 
         for signal in injection_signals(tool.description):
-            findings.append(MCPToolFinding(
-                code=f"DESCRIPTION_{signal}", severity="critical",
-                location="description",
-                detail="Instruction-like content appeared in the tool description.",
-            ))
+            findings.append(
+                MCPToolFinding(
+                    code=f"DESCRIPTION_{signal}",
+                    severity="critical",
+                    location="description",
+                    detail="Instruction-like content appeared in the tool description.",
+                )
+            )
         schema_text = canonical_json(tool.inputSchema)
         for signal in injection_signals(schema_text):
-            findings.append(MCPToolFinding(
-                code=f"SCHEMA_{signal}", severity="critical",
-                location="inputSchema",
-                detail="Instruction-like content appeared in the input schema.",
-            ))
+            findings.append(
+                MCPToolFinding(
+                    code=f"SCHEMA_{signal}",
+                    severity="critical",
+                    location="inputSchema",
+                    detail="Instruction-like content appeared in the input schema.",
+                )
+            )
         if _has_hidden_controls(tool.description) or _has_hidden_controls(schema_text):
-            findings.append(MCPToolFinding(
-                code="HIDDEN_UNICODE_CONTROL", severity="critical",
-                location="definition",
-                detail="The definition contains non-printing control characters.",
-            ))
+            findings.append(
+                MCPToolFinding(
+                    code="HIDDEN_UNICODE_CONTROL",
+                    severity="critical",
+                    location="definition",
+                    detail="The definition contains non-printing control characters.",
+                )
+            )
         for path in sorted(set(_schema_paths(tool.inputSchema))):
-            findings.append(MCPToolFinding(
-                code="SENSITIVE_SCHEMA_FIELD", severity="high", location=path,
-                detail="The schema requests a credential- or prompt-like field.",
-            ))
+            findings.append(
+                MCPToolFinding(
+                    code="SENSITIVE_SCHEMA_FIELD",
+                    severity="high",
+                    location=path,
+                    detail="The schema requests a credential- or prompt-like field.",
+                )
+            )
         if counts[tool.name] > 1:
-            findings.append(MCPToolFinding(
-                code="DUPLICATE_TOOL_NAME", severity="critical", location="name",
-                detail="The same manifest declares this tool name more than once.",
-            ))
+            findings.append(
+                MCPToolFinding(
+                    code="DUPLICATE_TOOL_NAME",
+                    severity="critical",
+                    location="name",
+                    detail="The same manifest declares this tool name more than once.",
+                )
+            )
         owners = store.mcp_tool_name_owners(tool.name, server_id)
         if owners:
-            findings.append(MCPToolFinding(
-                code="CROSS_SERVER_NAME_COLLISION", severity="high", location="name",
-                detail=f"Also registered by: {', '.join(owners[:5])}",
-            ))
+            findings.append(
+                MCPToolFinding(
+                    code="CROSS_SERVER_NAME_COLLISION",
+                    severity="high",
+                    location="name",
+                    detail=f"Also registered by: {', '.join(owners[:5])}",
+                )
+            )
         if changed:
-            findings.append(MCPToolFinding(
-                code="TOOL_DEFINITION_CHANGED", severity="critical", location="definition",
-                detail="The definition differs from the accepted baseline.",
-            ))
+            findings.append(
+                MCPToolFinding(
+                    code="TOOL_DEFINITION_CHANGED",
+                    severity="critical",
+                    location="definition",
+                    detail="The definition differs from the accepted baseline.",
+                )
+            )
 
         blocking_findings = [
             item
             for item in findings
             if item.severity == "critical"
-            and not (
-                request.accept_baseline and item.code == "TOOL_DEFINITION_CHANGED"
-            )
+            and not (request.accept_baseline and item.code == "TOOL_DEFINITION_CHANGED")
         ]
         blocked = bool(blocking_findings)
         status = "blocked" if blocked else "review" if findings else "trusted"
@@ -121,27 +144,52 @@ def inspect_manifest(
         )
         first_seen_clean = baseline is None and not findings
         unchanged_clean = baseline is not None and not changed and not findings
-        if (request.accept_baseline and not blocked) or first_seen_clean or unchanged_clean:
-            store.upsert_mcp_tool_baseline(server_id, tool.name, digest, definition, status)
-        results.append(MCPToolInspection(
-            server_id=server_id, tool_name=tool.name, digest=digest,
-            baseline_digest=baseline_digest, status=status, changed=changed,
-            findings=findings,
-        ))
+        if (
+            (request.accept_baseline and not blocked)
+            or first_seen_clean
+            or unchanged_clean
+        ):
+            store.upsert_mcp_tool_baseline(
+                server_id, tool.name, digest, definition, status
+            )
+        results.append(
+            MCPToolInspection(
+                server_id=server_id,
+                tool_name=tool.name,
+                digest=digest,
+                baseline_digest=baseline_digest,
+                status=status,
+                changed=changed,
+                findings=findings,
+            )
+        )
 
     safe = all(item.status != "blocked" for item in results)
     accepted = safe and all(
         store.get_mcp_tool_baseline(server_id, item.tool_name) is not None
         for item in results
     )
-    store.append_audit("mcp_manifest_inspected", {
-        "server_id": server_id, "safe": safe, "accepted": accepted,
-        "tools": [{
-            "name": item.tool_name, "digest": item.digest, "status": item.status,
-            "findings": [finding.code for finding in item.findings],
-        } for item in results],
-    })
+    store.append_audit(
+        "mcp_manifest_inspected",
+        {
+            "server_id": server_id,
+            "safe": safe,
+            "accepted": accepted,
+            "tools": [
+                {
+                    "name": item.tool_name,
+                    "digest": item.digest,
+                    "status": item.status,
+                    "findings": [finding.code for finding in item.findings],
+                }
+                for item in results
+            ],
+        },
+    )
     return MCPManifestInspectionResult(
-        server_id=server_id, safe=safe, accepted=accepted,
-        inspected_at=utc_now(), tools=results,
+        server_id=server_id,
+        safe=safe,
+        accepted=accepted,
+        inspected_at=utc_now(),
+        tools=results,
     )

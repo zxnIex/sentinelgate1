@@ -30,7 +30,7 @@ def test_authenticated_api_flow(service, signer, store):
     try:
         client = TestClient(app)
         health = client.get("/health").json()
-        assert health["version"] == "0.11.0"
+        assert health["version"] == "0.17.0"
         assert health["enforcement_mode"] == "enforce"
         schema = client.get("/openapi.json").json()
         schemes = schema["components"]["securitySchemes"]
@@ -47,6 +47,33 @@ def test_authenticated_api_flow(service, signer, store):
             json={"user_id": "u", "tool_name": "search_knowledge", "arguments": {}},
         )
         assert unauthenticated.status_code == 401
+        policy_draft = client.post(
+            "/v1/onboarding/policy-draft",
+            headers={"Authorization": "Bearer test-admin"},
+            json={
+                "agent_id": "research-agent",
+                "tools": [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "send_report",
+                            "parameters": {"type": "object"},
+                        },
+                    }
+                ],
+            },
+        )
+        assert policy_draft.status_code == 200
+        assert policy_draft.json()["policy"]["tools"]["send_report"]["effect"] == (
+            "require_approval"
+        )
+        snippet = client.post(
+            "/v1/onboarding/snippet",
+            headers={"Authorization": "Bearer test-admin"},
+            json={"framework": "openai-agents", "tool_name": "search_knowledge"},
+        )
+        assert snippet.status_code == 200
+        assert "guarded_function_tool" in snippet.json()["snippet"]
 
         token_response = client.post(
             "/v1/tokens/agents",
@@ -188,7 +215,10 @@ def test_containment_api(service, store):
         )
         assert created.status_code == 200
         containment_id = created.json()["id"]
-        assert client.get("/v1/containments", headers=headers).json()[0]["id"] == containment_id
+        assert (
+            client.get("/v1/containments", headers=headers).json()[0]["id"]
+            == containment_id
+        )
         released = client.post(
             f"/v1/containments/{containment_id}/release",
             headers=headers,
@@ -216,7 +246,13 @@ def test_watch_api_is_scoped_and_monitor_only(service, signer, store):
         watch_page = client.get("/console/watch")
         assert watch_page.status_code == 200
         assert 'data-section="watch"' in watch_page.text
-        assert '/assets/console.js?v=0.11.0' in watch_page.text
+        assert "/assets/console.js?v=0.17.0" in watch_page.text
+        respond_page = client.get("/console/respond")
+        assert respond_page.status_code == 200
+        assert 'data-section="respond"' in respond_page.text
+        assert "GATE · ENFORCE" in respond_page.text
+        assert "WATCH · DETECT" in respond_page.text
+        assert "WATCH+ · INTELLIGENCE & RESPONSE" in respond_page.text
         issued = client.post(
             "/v1/tokens/agents",
             headers={"Authorization": "Bearer test-admin"},
@@ -261,14 +297,48 @@ def test_watch_api_is_scoped_and_monitor_only(service, signer, store):
         summary = client.get("/v1/watch/summary", headers=admin_headers)
         assert summary.status_code == 200
         assert summary.json()["open_findings"] >= 1
-        assert client.get("/v1/watch/tasks", headers=admin_headers).json()[0][
-            "task_id"
-        ] == "api-watch-task"
-        assert len(
-            client.get(
-                "/v1/watch/tasks/api-watch-task/events", headers=admin_headers
-            ).json()
-        ) == 4
+        assert (
+            client.get("/v1/watch/tasks", headers=admin_headers).json()[0]["task_id"]
+            == "api-watch-task"
+        )
+        assert (
+            len(
+                client.get(
+                    "/v1/watch/tasks/api-watch-task/events", headers=admin_headers
+                ).json()
+            )
+            == 4
+        )
+        schema = client.get("/v1/watch/schema/event", headers=admin_headers)
+        assert schema.status_code == 200
+        assert schema.json()["properties"]["schema_version"]["const"] == "1.0"
+        otel = client.post(
+            "/v1/watch/otel/v1/spans",
+            headers=agent_headers,
+            json={
+                "schema_version": "1.0",
+                "spans": [
+                    {
+                        "name": "execute_tool search_knowledge",
+                        "trace_id": "otel-trace",
+                        "span_id": "0123456789abcdef",
+                        "attributes": {
+                            "sentinelgate.task.id": "otel-task",
+                            "gen_ai.conversation.id": "session-1",
+                            "gen_ai.tool.name": "search_knowledge",
+                            "gen_ai.usage.input_tokens": 25,
+                        },
+                        "duration_ms": 12.5,
+                    }
+                ],
+            },
+        )
+        assert otel.status_code == 200
+        assert otel.json() == {
+            "accepted": 1,
+            "rejected": 0,
+            "task_ids": ["otel-task"],
+        }
         assert store.list_containments() == []
     finally:
         app.dependency_overrides.clear()

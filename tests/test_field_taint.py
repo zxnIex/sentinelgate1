@@ -61,7 +61,9 @@ def field_service(tmp_path):
     principal = AgentPrincipal(
         agent_id="research-agent",
         tenant_id="tenant",
-        scopes=frozenset({"tools:email:send", "provenance:attest", "provenance:derive"}),
+        scopes=frozenset(
+            {"tools:email:send", "provenance:attest", "provenance:derive"}
+        ),
         token_id="field-test",
         expires_at=utc_now() + timedelta(hours=1),
     )
@@ -141,16 +143,22 @@ def test_llm_derivation_conservatively_unions_every_input(tmp_path):
     _, provenance, principal = field_service(tmp_path)
     safe = provenance.attest_structured(
         StructuredProvenanceAttestRequest(
-            source_id="safe", value={"text": "hello"}, trust=TrustLevel.TRUSTED,
+            source_id="safe",
+            value={"text": "hello"},
+            trust=TrustLevel.TRUSTED,
             trace_id="derive-trace",
-        ), principal.tenant_id,
+        ),
+        principal.tenant_id,
     )
     secret = provenance.attest_structured(
         StructuredProvenanceAttestRequest(
-            source_id="secret", value={"text": "customer 42"},
+            source_id="secret",
+            value={"text": "customer 42"},
             classification=DataClassification.CONFIDENTIAL,
-            labels=["customer-data"], trace_id="derive-trace",
-        ), principal.tenant_id,
+            labels=["customer-data"],
+            trace_id="derive-trace",
+        ),
+        principal.tenant_id,
     )
     result = provenance.derive_structured(
         StructuredProvenanceDeriveRequest(
@@ -187,9 +195,11 @@ def test_deterministic_derivation_is_verified(tmp_path):
     _, provenance, principal = field_service(tmp_path)
     source = provenance.attest_structured(
         StructuredProvenanceAttestRequest(
-            source_id="source", value={"first": "A", "second": "B"},
+            source_id="source",
+            value={"first": "A", "second": "B"},
             trace_id="derive-trace",
-        ), principal.tenant_id,
+        ),
+        principal.tenant_id,
     )
     inputs = {
         name: DerivationInput(

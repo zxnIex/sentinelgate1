@@ -78,6 +78,20 @@ class GatewayService:
         operational_side_effects = (
             side_effects and self.enforcement_mode is not EnforcementMode.OBSERVE
         )
+        if side_effects and call.task_id:
+            watch_task = self.store.get_watch_task(
+                call.task_id, principal.tenant_id, principal.agent_id
+            )
+            if watch_task and watch_task.status == "paused":
+                result = Evaluation(
+                    Decision.DENY,
+                    ["WATCH:TASK_PAUSED"],
+                    "high",
+                    self.policy.version,
+                )
+                return self._finalize(
+                    call, principal, digest, result, findings, None, False, side_effects
+                )
         containment = (
             self.store.active_containment(principal.tenant_id, principal.agent_id)
             if side_effects
@@ -87,7 +101,8 @@ class GatewayService:
             result = Evaluation(
                 Decision.DENY,
                 ["AGENT_QUARANTINED", f"CONTAINMENT:{containment.mode.value.upper()}"],
-                "critical", self.policy.version,
+                "critical",
+                self.policy.version,
             )
             return self._finalize(
                 call, principal, digest, result, findings, None, True, side_effects
@@ -98,8 +113,10 @@ class GatewayService:
             and call.tool_name not in containment.allowed_tools
         ):
             result = Evaluation(
-                Decision.DENY, ["CONTAINMENT:TOOL_RESTRICTED"],
-                "high", self.policy.version,
+                Decision.DENY,
+                ["CONTAINMENT:TOOL_RESTRICTED"],
+                "high",
+                self.policy.version,
             )
             return self._finalize(
                 call, principal, digest, result, findings, None, False, side_effects
@@ -154,23 +171,53 @@ class GatewayService:
                     self.policy.version,
                 )
         tool = self.policy.tool_config(call.tool_name) or {}
-        if operational_side_effects and result.decision is not Decision.DENY and tool.get("egress", False):
+        if (
+            operational_side_effects
+            and result.decision is not Decision.DENY
+            and tool.get("egress", False)
+        ):
             amount = len(canonical_json(call.arguments).encode("utf-8"))
-            max_single = int(tool.get("max_egress_bytes", self.policy.defaults.get("max_egress_bytes", 100_000)))
-            hourly = int(tool.get("hourly_egress_bytes", self.policy.defaults.get("hourly_egress_bytes", 1_000_000)))
+            max_single = int(
+                tool.get(
+                    "max_egress_bytes",
+                    self.policy.defaults.get("max_egress_bytes", 100_000),
+                )
+            )
+            hourly = int(
+                tool.get(
+                    "hourly_egress_bytes",
+                    self.policy.defaults.get("hourly_egress_bytes", 1_000_000),
+                )
+            )
             if amount > max_single:
-                result = Evaluation(Decision.DENY, ["EGRESS_SINGLE_LIMIT_EXCEEDED"], "critical", self.policy.version)
+                result = Evaluation(
+                    Decision.DENY,
+                    ["EGRESS_SINGLE_LIMIT_EXCEEDED"],
+                    "critical",
+                    self.policy.version,
+                )
             elif not self.store.egress_allowed(
                 principal.tenant_id, principal.agent_id, amount, hourly
             ):
-                result = Evaluation(Decision.DENY, ["EGRESS_HOURLY_BUDGET_EXCEEDED"], "critical", self.policy.version)
+                result = Evaluation(
+                    Decision.DENY,
+                    ["EGRESS_HOURLY_BUDGET_EXCEEDED"],
+                    "critical",
+                    self.policy.version,
+                )
             elif self.store.trace_has_category(
                 principal.tenant_id, principal.agent_id, call.trace_id, "sensitive_read"
             ):
                 result = Evaluation(
                     Decision.REQUIRE_APPROVAL,
-                    sorted({*result.reasons, "SUSPICIOUS_SEQUENCE:SENSITIVE_READ_TO_EGRESS"}),
-                    "high", self.policy.version,
+                    sorted(
+                        {
+                            *result.reasons,
+                            "SUSPICIOUS_SEQUENCE:SENSITIVE_READ_TO_EGRESS",
+                        }
+                    ),
+                    "high",
+                    self.policy.version,
                 )
         approval_id = None
         if result.decision is Decision.REQUIRE_APPROVAL and operational_side_effects:
@@ -485,9 +532,9 @@ class GatewayService:
                     "agent_id": principal.agent_id,
                     "tenant_id": principal.tenant_id,
                     "tool_name": call.tool_name,
-                        "output": redact(result.output),
-                    },
-                )
+                    "output": redact(result.output),
+                },
+            )
             parents = self._all_provenance_contexts(call, principal)
             attestation = self.provenance.derive_tool_output(
                 tenant_id=principal.tenant_id,
@@ -695,9 +742,7 @@ class GatewayService:
         reasons = [f"MCP_INTEGRITY:{status.upper()}"]
         reasons.extend(f"MCP_FINDING:{item}" for item in observation["findings"])
         if status == "blocked":
-            return Evaluation(
-                Decision.DENY, reasons, "critical", self.policy.version
-            )
+            return Evaluation(Decision.DENY, reasons, "critical", self.policy.version)
         if status == "review":
             return Evaluation(
                 Decision.REQUIRE_APPROVAL,
@@ -724,13 +769,16 @@ class GatewayService:
             tool = self.policy.tool_config(call.tool_name) or {}
             category = str(tool.get("category", "other"))
             self.store.record_action(
-                principal.tenant_id, principal.agent_id, call.trace_id,
-                call.tool_name, category, result.decision.value,
+                principal.tenant_id,
+                principal.agent_id,
+                call.trace_id,
+                call.tool_name,
+                category,
+                result.decision.value,
             )
             if (
                 self.enforcement_mode is not EnforcementMode.OBSERVE
-                and
-                result.decision is Decision.DENY
+                and result.decision is Decision.DENY
                 and result.risk in {"high", "critical"}
                 and "RATE_LIMIT_EXCEEDED" not in result.reasons
                 and "AGENT_QUARANTINED" not in result.reasons

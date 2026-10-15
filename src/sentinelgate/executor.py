@@ -83,9 +83,7 @@ class ToolRegistry:
             Draft202012Validator.check_schema(input_schema)
         except SchemaError as exc:
             raise ToolValidationError(f"Invalid JSON schema for {name}") from exc
-        self._tools[name] = RegisteredTool(
-            handler, None, description, input_schema
-        )
+        self._tools[name] = RegisteredTool(handler, None, description, input_schema)
 
     def definitions(self) -> list[dict[str, Any]]:
         """Return MCP/OpenAI-compatible definitions from code-owned schemas."""
@@ -108,12 +106,12 @@ class ToolRegistry:
     def validate(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         tool = self._tools.get(name)
         if tool is None or tool.arguments_model is None:
-            if tool and tool.input_schema and list(
-                Draft202012Validator(tool.input_schema).iter_errors(arguments)
+            if (
+                tool
+                and tool.input_schema
+                and list(Draft202012Validator(tool.input_schema).iter_errors(arguments))
             ):
-                raise ToolValidationError(
-                    f"Arguments failed schema for {name}"
-                )
+                raise ToolValidationError(f"Arguments failed schema for {name}")
             return arguments
         try:
             return tool.arguments_model.model_validate(arguments).model_dump()
@@ -127,7 +125,9 @@ class ToolRegistry:
         validated = self.validate(name, arguments)
         try:
             result = tool.handler(validated)
-            return result if isinstance(result, ToolResult) else ToolResult(output=result)
+            return (
+                result if isinstance(result, ToolResult) else ToolResult(output=result)
+            )
         except ToolExecutionError:
             raise
         except Exception as exc:
